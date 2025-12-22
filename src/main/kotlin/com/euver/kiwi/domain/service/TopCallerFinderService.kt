@@ -4,6 +4,8 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiMethod
+import com.intellij.openapi.roots.ProjectRootManager
+import com.intellij.openapi.roots.TestSourcesFilter
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.searches.MethodReferencesSearch
 import com.intellij.psi.search.searches.OverridingMethodsSearch
@@ -125,18 +127,56 @@ class TopCallerFinderService(private val project: Project) {
 
     /**
      * 查找直接调用指定方法的所有方法
+     * 注意：只搜索生产代码，排除测试代码
      */
     private fun findDirectCallers(method: PsiMethod): List<PsiMethod> {
-        val scope = GlobalSearchScope.projectScope(project)
+        val scope = createProductionScope()
         val references = ApplicationManager.getApplication().runReadAction<Collection<com.intellij.psi.PsiReference>> {
             MethodReferencesSearch.search(method, scope, true).findAll()
         }
 
         return references.mapNotNull { reference ->
             ApplicationManager.getApplication().runReadAction<PsiMethod?> {
-                PsiTreeUtil.getParentOfType(reference.element, PsiMethod::class.java)
+                val callerMethod = PsiTreeUtil.getParentOfType(reference.element, PsiMethod::class.java)
+                // 再次过滤，确保调用者不在测试源码中
+                if (callerMethod != null && !isInTestSource(callerMethod)) {
+                    callerMethod
+                } else {
+                    null
+                }
             }
         }.distinctBy { getMethodKey(it) }
+    }
+
+    /**
+     * 创建生产代码搜索范围（排除测试目录）
+     */
+    private fun createProductionScope(): GlobalSearchScope {
+        return ApplicationManager.getApplication().runReadAction<GlobalSearchScope> {
+            val projectScope = GlobalSearchScope.projectScope(project)
+            val projectFileIndex = ProjectRootManager.getInstance(project).fileIndex
+            
+            // 过滤掉测试源码目录
+            projectScope.intersectWith(object : GlobalSearchScope(project) {
+                override fun contains(file: com.intellij.openapi.vfs.VirtualFile): Boolean {
+                    return !projectFileIndex.isInTestSourceContent(file)
+                }
+
+                override fun isSearchInModuleContent(aModule: com.intellij.openapi.module.Module): Boolean = true
+                override fun isSearchInLibraries(): Boolean = false
+            })
+        }
+    }
+
+    /**
+     * 判断方法是否在测试源码中
+     */
+    private fun isInTestSource(method: PsiMethod): Boolean {
+        return ApplicationManager.getApplication().runReadAction<Boolean> {
+            val containingFile = method.containingFile?.virtualFile ?: return@runReadAction false
+            val projectFileIndex = ProjectRootManager.getInstance(project).fileIndex
+            projectFileIndex.isInTestSourceContent(containingFile)
+        }
     }
 
     /**
