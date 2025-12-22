@@ -1,0 +1,73 @@
+######################
+# 操作系统与编辑器临时文件
+######################
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+*.tmp
+
+######################
+# IntelliJ IDEA / JetBrains 配置
+######################
+# 模块文件（由 Gradle 自动生成）
+*.iml
+
+# 本地工作区与书签等（不共享）
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/usage.statistics.xml
+.idea/dictionaries
+.idea/shelf/
+.idea/httpRequests/
+.idea/dataSources/
+.idea/dataSources.local.xml
+
+# IntelliJ 平台运行时与缓存
+.intellijPlatform/
+.kotlin/
+
+######################
+# Qoder / 其他工具本地配置
+######################
+.qoder/
+
+######################
+# 运行配置（视团队约定保留，这里默认提交）
+# 如需忽略运行配置，可取消下一行注释
+# .run/
+
+######################
+# VS Code（如果团队只用 IDEA，可以忽略）
+######################
+.vscode/
+
+######################
+# Gradle 构建与缓存
+######################
+.gradle/
+build/
+out/
+target/
+
+# Gradle Wrapper 相关文件保留提交
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+
+######################
+# 日志与临时输出
+######################
+*.log
+log/
+logs/
+
+######################
+# Qodana / 静态分析等工具的本地输出目录
+######################
+.qodana/
+
+######################
+# 项目约定：排除所有以 .xxx 结尾的目录
+######################
+**/*.xxx/

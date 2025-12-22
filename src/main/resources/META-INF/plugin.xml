@@ -1,0 +1,43 @@
+<!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
+<idea-plugin>
+    <id>com.euver.kiwi</id>
+    <name>Kiwi</name>
+    <vendor>euver</vendor>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.xml</depends>
+    <depends>com.intellij.modules.java</depends>
+
+
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow factoryClass="com.euver.kiwi.service.MyBatisSqlToolWindowFactory" id="Kiwi Console" anchor="bottom" canCloseContents="true" icon="AllIcons.Debugger.Console"/>
+        <!-- MyBatis SQL Assembly Service -->
+        <projectService serviceImplementation="com.euver.kiwi.service.MapperIndexService"/>
+        <!-- Notification Group for MyBatis SQL Assembly -->
+        <notificationGroup id="MyBatis.SQL.Assembly" displayType="BALLOON"/>
+    </extensions>
+
+    <actions>
+        <!-- MyBatis SQL Assembly Action -->
+        <group id="Kiwi.EditorPopupGroup"
+               text="Kiwi"
+               popup="true">
+            <add-to-group group-id="EditorPopupMenu" anchor="first"/>
+            <action id="MyBatis.AssembleSql"
+                    class="com.euver.kiwi.action.AssembleSqlAction"
+                    text="Copy Expanded Statement"
+                    description="Copy the statement with all include tags expanded"
+                    icon="/icons/kiwi.svg"/>
+            <action id="Kiwi.ExtractMethodInfo"
+                    class="com.euver.kiwi.action.ExtractMethodInfoAction"
+                    text="Extract Method Information"
+                    description="提取方法的全限定名、功能注释和请求路径并输出到控制台"
+                    icon="/icons/kiwi.svg"/>
+            <action id="Kiwi.FindTopCaller"
+                    class="com.euver.kiwi.action.FindTopCallerAction"
+                    text="Get Top Callers Information"
+                    description="获取并输出所有顶层调用者的方法信息"
+                    icon="/icons/kiwi.svg"/>
+        </group>
+    </actions>
+</idea-plugin>

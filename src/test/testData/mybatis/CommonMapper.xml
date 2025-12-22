@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.mapper.CommonMapper">
+
+    <!-- 公共 SQL 片段,用于跨文件引用测试 -->
+    <sql id="commonFields">
+        tenant_id, delete_flag, version
+    </sql>
+
+    <sql id="orderBy">
+        ORDER BY create_time DESC, id ASC
+    </sql>
+
+</mapper>
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.mapper.CommonMapper">
+
+    <!-- 公共 SQL 片段,用于跨文件引用测试 -->
+    <sql id="commonFields">
+        tenant_id, delete_flag, version
+    </sql>
+
+    <sql id="orderBy">
+        ORDER BY create_time DESC, id ASC
+    </sql>
+
+</mapper>

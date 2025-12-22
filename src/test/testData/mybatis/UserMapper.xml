@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.mapper.UserMapper">
+
+    <!-- SQL 片段定义 -->
+    <sql id="baseColumns">
+        id, username, email, phone, create_time, update_time
+    </sql>
+
+    <sql id="baseCondition">
+        <where>
+            <if test="id != null">
+                AND id = #{id}
+            </if>
+            <if test="username != null">
+                AND username = #{username}
+            </if>
+        </where>
+    </sql>
+
+    <!-- 包含嵌套 include 的 SQL 片段 -->
+    <sql id="extendedColumns">
+        <include refid="baseColumns"/>, status, role
+    </sql>
+
+    <!-- 简单的 select 语句,包含单个 include -->
+    <select id="selectById" resultType="User">
+        SELECT
+        <include refid="baseColumns"/>
+        FROM user
+        WHERE id = #{id}
+    </select>
+
+    <!-- 包含多个 include 的 select 语句 -->
+    <select id="selectByCondition" resultType="User">
+        SELECT
+        <include refid="extendedColumns"/>
+        FROM user
+        <include refid="baseCondition"/>
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 包含未定义片段的 select(用于测试错误处理) -->
+    <select id="selectWithMissingFragment" resultType="User">
+        SELECT
+        <include refid="notExistFragment"/>
+        FROM user
+        WHERE id = #{id}
+    </select>
+
+    <!-- insert 语句 -->
+    <insert id="insertUser">
+        INSERT INTO user (<include refid="baseColumns"/>)
+        VALUES (#{id}, #{username}, #{email}, #{phone}, #{createTime}, #{updateTime})
+    </insert>
+
+</mapper>
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.mapper.UserMapper">
+
+    <!-- SQL 片段定义 -->
+    <sql id="baseColumns">
+        id, username, email, phone, create_time, update_time
+    </sql>
+
+    <sql id="baseCondition">
+        <where>
+            <if test="id != null">
+                AND id = #{id}
+            </if>
+            <if test="username != null">
+                AND username = #{username}
+            </if>
+        </where>
+    </sql>
+
+    <!-- 包含嵌套 include 的 SQL 片段 -->
+    <sql id="extendedColumns">
+        <include refid="baseColumns"/>, status, role
+    </sql>
+
+    <!-- 简单的 select 语句,包含单个 include -->
+    <select id="selectById" resultType="User">
+        SELECT
+        <include refid="baseColumns"/>
+        FROM user
+        WHERE id = #{id}
+    </select>
+
+    <!-- 包含多个 include 的 select 语句 -->
+    <select id="selectByCondition" resultType="User">
+        SELECT
+        <include refid="extendedColumns"/>
+        FROM user
+        <include refid="baseCondition"/>
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 包含未定义片段的 select(用于测试错误处理) -->
+    <select id="selectWithMissingFragment" resultType="User">
+        SELECT
+        <include refid="notExistFragment"/>
+        FROM user
+        WHERE id = #{id}
+    </select>
+
+    <!-- insert 语句 -->
+    <insert id="insertUser">
+        INSERT INTO user (<include refid="baseColumns"/>)
+        VALUES (#{id}, #{username}, #{email}, #{phone}, #{createTime}, #{updateTime})
+    </insert>
+
+</mapper>

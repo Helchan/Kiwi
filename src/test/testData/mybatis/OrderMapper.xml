@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.mapper.OrderMapper">
+
+    <!-- 包含跨文件引用的 select 语句 -->
+    <select id="selectOrderList" resultType="Order">
+        SELECT
+        id, order_no, user_id, amount,
+        <include refid="com.example.mapper.CommonMapper.commonFields"/>
+        FROM t_order
+        WHERE user_id = #{userId}
+        <include refid="com.example.mapper.CommonMapper.orderBy"/>
+    </select>
+
+    <!-- 测试循环引用 -->
+    <sql id="circularA">
+        field_a, <include refid="circularB"/>
+    </sql>
+
+    <sql id="circularB">
+        field_b, <include refid="circularA"/>
+    </sql>
+
+    <select id="selectWithCircular" resultType="Order">
+        SELECT
+        <include refid="circularA"/>
+        FROM t_order
+    </select>
+
+</mapper>

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="16" height="16" viewBox="0 0 16 16">
+  <!-- 外圈：猕猴桃棕色外皮 -->
+  <circle cx="8" cy="8" r="7.5" fill="#7A5C3A"/>
+
+  <!-- 中圈：绿色果肉 -->
+  <circle cx="8" cy="8" r="6.2" fill="#7FCC4A"/>
+
+  <!-- 内圈：偏黄的中心果肉 -->
+  <circle cx="8" cy="8" r="3.2" fill="#F4F0B2"/>
+
+  <!-- 中心小圆 -->
+  <circle cx="8" cy="8" r="1.1" fill="#FDFDF5"/>
+
+  <!-- 放射状黑色种子（简单 8 颗） -->
+  <circle cx="8" cy="4.2" r="0.5" fill="#333333"/>
+  <circle cx="10.7" cy="5.0" r="0.5" fill="#333333"/>
+  <circle cx="11.8" cy="7.5" r="0.5" fill="#333333"/>
+  <circle cx="10.7" cy="10.0" r="0.5" fill="#333333"/>
+  <circle cx="8" cy="11.0" r="0.5" fill="#333333"/>
+  <circle cx="5.3" cy="10.0" r="0.5" fill="#333333"/>
+  <circle cx="4.2" cy="7.5" r="0.5" fill="#333333"/>
+  <circle cx="5.3" cy="5.0" r="0.5" fill="#333333"/>
+</svg>
