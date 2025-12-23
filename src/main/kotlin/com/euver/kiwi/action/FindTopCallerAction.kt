@@ -1,6 +1,7 @@
 package com.euver.kiwi.action
 
 import com.euver.kiwi.domain.model.MethodInfo
+import com.euver.kiwi.domain.model.TopCallerWithStatement
 import com.euver.kiwi.domain.service.MethodInfoExtractorService
 import com.euver.kiwi.domain.service.SqlFragmentUsageFinderService
 import com.euver.kiwi.domain.service.TopCallerFinderService
@@ -246,11 +247,11 @@ class FindTopCallerAction : AnAction() {
                 indicator.text = "正在查找引用该 SQL 片段的 Statement..."
                 indicator.fraction = 0.0
                 
-                // 第一步：找到所有引用该 SQL 片段的 Mapper 方法
+                // 第一步：找到所有引用该 SQL 片段的 Statement 及其对应的 Mapper 方法
                 val fragmentUsageService = SqlFragmentUsageFinderService(project)
-                val mapperMethods = fragmentUsageService.findMapperMethodsUsingFragment(fragmentFullId, psiFile)
+                val statementToMethod = fragmentUsageService.findMapperMethodsWithStatementId(fragmentFullId, psiFile)
                 
-                if (mapperMethods.isEmpty()) {
+                if (statementToMethod.isEmpty()) {
                     ApplicationManager.getApplication().invokeLater {
                         NotificationService(project).showInfoNotification(
                             "未找到引用该 SQL 片段的 Statement: $fragmentFullId"
@@ -262,66 +263,81 @@ class FindTopCallerAction : AnAction() {
                 indicator.text = "正在分析调用链..."
                 indicator.fraction = 0.3
                 
-                // 第二步：对每个 Mapper 方法查找其顶层调用者
+                // 第二步：对每个 Statement 对应的 Mapper 方法查找其顶层调用者，并记录关联关系
                 val topCallerService = TopCallerFinderService(project)
-                val allTopCallers = mutableSetOf<PsiMethod>()
+                val methodInfoExtractorService = MethodInfoExtractorService()
+                // 保存顶层调用者与 Statement 的关联关系
+                val topCallersWithStatements = mutableListOf<TopCallerWithStatement>()
                 var processedCount = 0
                 
-                for (mapperMethod in mapperMethods) {
+                for ((statementId, mapperMethod) in statementToMethod) {
                     val topCallers = topCallerService.findTopCallers(mapperMethod)
                     if (topCallers.isEmpty()) {
                         // 如果没有顶层调用者，Mapper 方法本身就是顶层调用者
-                        allTopCallers.add(mapperMethod)
+                        val methodInfo = ApplicationManager.getApplication().runReadAction<MethodInfo?> {
+                            try {
+                                methodInfoExtractorService.extractMethodInfo(mapperMethod)
+                            } catch (e: Exception) {
+                                logger.warn("提取方法信息失败: ${mapperMethod.name}", e)
+                                null
+                            }
+                        }
+                        if (methodInfo != null) {
+                            topCallersWithStatements.add(TopCallerWithStatement(methodInfo, statementId))
+                        }
                     } else {
-                        allTopCallers.addAll(topCallers)
+                        for (topCaller in topCallers) {
+                            val methodInfo = ApplicationManager.getApplication().runReadAction<MethodInfo?> {
+                                try {
+                                    methodInfoExtractorService.extractMethodInfo(topCaller)
+                                } catch (e: Exception) {
+                                    logger.warn("提取方法信息失败: ${topCaller.name}", e)
+                                    null
+                                }
+                            }
+                            if (methodInfo != null) {
+                                topCallersWithStatements.add(TopCallerWithStatement(methodInfo, statementId))
+                            }
+                        }
                     }
                     processedCount++
-                    indicator.fraction = 0.3 + 0.7 * processedCount / mapperMethods.size
+                    indicator.fraction = 0.3 + 0.7 * processedCount / statementToMethod.size
                 }
                 
                 ApplicationManager.getApplication().invokeLater {
-                    outputSqlFragmentTopCallers(project, fragmentFullId, allTopCallers)
+                    outputSqlFragmentTopCallersWithStatements(project, fragmentFullId, topCallersWithStatements)
                 }
             }
         })
     }
 
     /**
-     * 输出 SQL 片段的顶层调用者信息
+     * 输出 SQL 片段的顶层调用者信息（带 Statement ID 关联）
      */
-    private fun outputSqlFragmentTopCallers(
+    private fun outputSqlFragmentTopCallersWithStatements(
         project: Project,
         fragmentFullId: String,
-        topCallers: Set<PsiMethod>
+        topCallersWithStatements: List<TopCallerWithStatement>
     ) {
         val consoleOutputService = ConsoleOutputService(project)
-        val methodInfoExtractorService = MethodInfoExtractorService()
 
-        if (topCallers.isEmpty()) {
+        if (topCallersWithStatements.isEmpty()) {
             consoleOutputService.outputTopCallersInfo("SQL Fragment: $fragmentFullId", emptyList())
             NotificationService(project).showInfoNotification("未找到顶层调用者")
             return
         }
 
-        val methodInfoList = topCallers.mapNotNull { caller ->
-            try {
-                ApplicationManager.getApplication().runReadAction<MethodInfo> {
-                    methodInfoExtractorService.extractMethodInfo(caller)
-                }
-            } catch (e: Exception) {
-                logger.warn("提取方法信息失败: ${caller.name}", e)
-                null
-            }
-        }
+        // 提取唯一的 MethodInfo 列表用于控制台输出
+        val uniqueMethodInfoList = topCallersWithStatements.map { it.methodInfo }.distinctBy { it.qualifiedName }
 
-        consoleOutputService.outputTopCallersInfo("SQL Fragment: $fragmentFullId", methodInfoList)
-        NotificationService(project).showInfoNotification("找到 ${topCallers.size} 个顶层调用者")
+        consoleOutputService.outputTopCallersInfo("SQL Fragment: $fragmentFullId", uniqueMethodInfoList)
+        NotificationService(project).showInfoNotification("找到 ${uniqueMethodInfoList.size} 个顶层调用者")
 
-        if (methodInfoList.isNotEmpty()) {
-            TopCallersTableDialog(
+        if (topCallersWithStatements.isNotEmpty()) {
+            TopCallersTableDialog.createWithStatements(
                 project = project,
                 sourceMethodName = "SQL Fragment: $fragmentFullId",
-                topCallers = methodInfoList
+                topCallersWithStatements = topCallersWithStatements
             ).show()
         }
     }
@@ -377,7 +393,7 @@ class FindTopCallerAction : AnAction() {
         NotificationService(project).showInfoNotification("找到 ${topCallers.size} 个顶层调用者")
 
         if (methodInfoList.isNotEmpty()) {
-            TopCallersTableDialog(
+            TopCallersTableDialog.create(
                 project = project,
                 sourceMethodName = sourceMethodName,
                 topCallers = methodInfoList

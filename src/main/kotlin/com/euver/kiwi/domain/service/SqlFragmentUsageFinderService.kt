@@ -45,6 +45,91 @@ class SqlFragmentUsageFinderService(private val project: Project) {
     }
 
     /**
+     * 查找引用指定 SQL 片段的所有 Statement 对应的 Mapper 方法，并返回 Statement ID 与方法的映射关系
+     * 用于需要同时展示 Statement ID 信息的场景
+     * 
+     * @param fragmentFullId SQL 片段的完整 ID（namespace.fragmentId）
+     * @param currentFile 当前 XML 文件
+     * @return Statement ID 到 Mapper 方法的映射（一个 Statement 对应一个 Mapper 方法）
+     */
+    fun findMapperMethodsWithStatementId(fragmentFullId: String, currentFile: XmlFile): Map<String, PsiMethod> {
+        logger.info("开始查找引用 SQL 片段的 Statement 及其 ID: $fragmentFullId")
+        
+        val statementToMethod = mutableMapOf<String, PsiMethod>()
+        val visitedFragments = mutableSetOf<String>()
+        
+        findMapperMethodsWithStatementIdRecursively(
+            fragmentFullId, 
+            currentFile, 
+            statementToMethod, 
+            visitedFragments, 
+            0
+        )
+        
+        logger.info("找到 ${statementToMethod.size} 个引用该 SQL 片段的 Statement")
+        return statementToMethod
+    }
+
+    /**
+     * 递归查找引用 SQL 片段的 Mapper 方法，同时记录 Statement ID
+     */
+    private fun findMapperMethodsWithStatementIdRecursively(
+        fragmentFullId: String,
+        currentFile: XmlFile,
+        statementToMethod: MutableMap<String, PsiMethod>,
+        visitedFragments: MutableSet<String>,
+        depth: Int
+    ) {
+        if (depth > MAX_DEPTH) {
+            logger.warn("达到最大递归深度限制: $MAX_DEPTH，当前片段: $fragmentFullId，可能存在过深的引用链或循环引用")
+            return
+        }
+
+        if (fragmentFullId in visitedFragments) {
+            return
+        }
+        visitedFragments.add(fragmentFullId)
+
+        val indexService = MapperIndexService.getInstance(project)
+        val allMapperFiles = ApplicationManager.getApplication().runReadAction<List<XmlFile>> {
+            indexService.findAllMapperFiles()
+        }
+
+        for (mapperFile in allMapperFiles) {
+            ApplicationManager.getApplication().runReadAction {
+                val namespace = parser.extractNamespace(mapperFile) ?: return@runReadAction
+                val rootTag = mapperFile.rootTag ?: return@runReadAction
+
+                for (tag in rootTag.subTags) {
+                    val tagName = tag.name
+                    val tagId = tag.getAttributeValue("id") ?: continue
+
+                    if (isStatementTag(tagName)) {
+                        if (doesTagReferenceFragment(tag, fragmentFullId, namespace)) {
+                            val method = findMapperMethod(namespace, tagId)
+                            if (method != null) {
+                                val statementFullId = "$namespace.$tagId"
+                                statementToMethod[statementFullId] = method
+                            }
+                        }
+                    } else if (tagName == "sql") {
+                        if (doesTagReferenceFragment(tag, fragmentFullId, namespace)) {
+                            val parentFragmentFullId = "$namespace.$tagId"
+                            findMapperMethodsWithStatementIdRecursively(
+                                parentFragmentFullId,
+                                mapperFile,
+                                statementToMethod,
+                                visitedFragments,
+                                depth + 1
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
      * 递归查找引用 SQL 片段的 Mapper 方法
      * 处理 SQL 片段被其他 SQL 片段引用的嵌套情况
      */

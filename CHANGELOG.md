@@ -1,5 +1,30 @@
 # Kiwi Changelog
 
+## [0.0.66]
+### Fixed
+- 修复单元格合并渲染器的行索引转换问题（视图行 -> 模型行）
+- 改进合并单元格的背景色处理，保持选中状态一致性
+- 添加合并信息调试日志
+
+## [0.0.65]
+### Changed
+- StatementID 列宽度设置为自适应模式，最大宽度限制为 200 像素
+
+## [0.0.64]
+### Changed
+- 调整顶层调用者表格 StatementID 列位置从第一列移动到最后一列
+
+## [0.0.63]
+### Added
+- SQL 片段模式下顶层调用者表格新增 "StatementID" 列，展示引用该 SQL 片段的 Statement 全局 ID
+- StatementID 列支持右键跳转到对应的 MyBatis Mapper XML 位置
+- StatementID 列支持右键 "Copy Expanded Statement" 功能
+- 单元格合并逻辑：同一顶层调用者涉及多个 Statement 时，顶层调用者信息列自动合并
+- Excel 导出支持单元格合并
+
+### Changed
+- 仅在 SQL 片段上触发（<sql> 标签 ID 或 <include> refid）时才显示 StatementID 列
+
 ## [0.0.62]
 ### Changed
 - 优化顶层调用者表格列宽自适应逻辑：所有列根据内容自动计算宽度，最大限制80字符
