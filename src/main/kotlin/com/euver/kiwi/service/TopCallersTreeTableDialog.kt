@@ -104,6 +104,26 @@ class TopCallersTreeTableDialog private constructor(
 
     companion object {
         /**
+         * MethodInfo 默认排序比较器
+         * 排序规则：
+         * 1. 类型（API 在前，Normal 在后）
+         * 2. 请求路径（升序）
+         * 3. 方法全限定名（升序）
+         */
+        private val methodInfoComparator = Comparator<MethodInfo> { a, b ->
+            // 第一优先级：类型（API 在前）
+            val typeA = if (a.isExternalInterface()) 0 else 1
+            val typeB = if (b.isExternalInterface()) 0 else 1
+            if (typeA != typeB) return@Comparator typeA.compareTo(typeB)
+            
+            // 第二优先级：请求路径升序
+            val pathCompare = a.requestPath.compareTo(b.requestPath)
+            if (pathCompare != 0) return@Comparator pathCompare
+            
+            // 第三优先级：方法全限定名升序
+            a.qualifiedName.compareTo(b.qualifiedName)
+        }
+        /**
          * 创建普通模式的对话框
          */
         fun create(
@@ -286,7 +306,10 @@ class TopCallersTreeTableDialog private constructor(
      * 普通模式构建树
      */
     private fun buildTreeNormal(root: DefaultMutableTreeNode, topCallers: List<MethodInfo>) {
-        topCallers.forEachIndexed { index, methodInfo ->
+        // 按默认排序规则排序
+        val sortedCallers = topCallers.sortedWith(methodInfoComparator)
+        
+        sortedCallers.forEachIndexed { index, methodInfo ->
             val nodeData = TreeNodeData.TopCallerData(
                 seqNumber = index + 1,
                 methodInfo = methodInfo
@@ -314,10 +337,15 @@ class TopCallersTreeTableDialog private constructor(
         // 按顶层调用者分组
         val groupedByMethod = data.groupBy { it.methodInfo.qualifiedName }
         
+        // 按默认排序规则对分组进行排序（取每组第一个元素的 methodInfo 进行排序）
+        val sortedGroups = groupedByMethod.entries.sortedWith(
+            Comparator { a, b -> methodInfoComparator.compare(a.value.first().methodInfo, b.value.first().methodInfo) }
+        )
+        
         var seqNumber = 0
         var exportRowIndex = 0
         
-        for ((_, group) in groupedByMethod) {
+        for ((_, group) in sortedGroups) {
             seqNumber++
             val methodInfo = group.first().methodInfo
             val statementIds = group.map { it.statementId }.distinct()
