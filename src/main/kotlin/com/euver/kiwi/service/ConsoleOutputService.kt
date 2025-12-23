@@ -1,6 +1,7 @@
 package com.euver.kiwi.service
 
 import com.euver.kiwi.domain.model.MethodInfo
+import com.euver.kiwi.domain.model.TopCallerWithStatement
 import com.euver.kiwi.model.AssemblyResult
 import com.intellij.execution.filters.TextConsoleBuilderFactory
 import com.intellij.execution.ui.ConsoleView
@@ -65,6 +66,18 @@ class ConsoleOutputService(private val project: Project) {
      */
     fun outputTopCallersInfo(sourceMethodName: String, topCallers: List<MethodInfo>) {
         val output = buildTopCallersOutput(sourceMethodName, topCallers)
+        showInToolWindow(output, ConsoleViewContentType.NORMAL_OUTPUT, "Top Callers")
+    }
+
+    /**
+     * 输出带 Statement ID 的顶层调用者信息到控制台工具窗口（SQL 片段模式）
+     * 与 TopCallersTreeTableDialog 显示的列保持一致
+     */
+    fun outputTopCallersInfoWithStatements(
+        sourceMethodName: String,
+        topCallersWithStatements: List<TopCallerWithStatement>
+    ) {
+        val output = buildTopCallersOutputWithStatements(sourceMethodName, topCallersWithStatements)
         showInToolWindow(output, ConsoleViewContentType.NORMAL_OUTPUT, "Top Callers")
     }
     
@@ -253,15 +266,8 @@ class ConsoleOutputService(private val project: Project) {
     }
 
     /**
-     * 构建顶层调用者输出内容
-     * 输出顺序：
-     * 1. 包路径（必填）
-     * 2. 类名.方法签名（必填）
-     * 3. 类的功能注释（可选，存在时才显示）
-     * 4. 方法的功能注释（可选，存在时才显示）
-     * 5. 方法类型：普通方法 或 供外部调用的接口（必填）
-     * 6. 请求类型（仅接口时显示）
-     * 7. 请求路径（仅接口时显示）
+     * 构建顶层调用者输出内容（表格格式）
+     * 列顺序与 TreeTable 保持一致：序号、类型、请求路径、方法、类功能注释、方法功能注释、包路径
      */
     private fun buildTopCallersOutput(sourceMethodName: String, topCallers: List<MethodInfo>): String {
         val builder = StringBuilder()
@@ -276,38 +282,179 @@ class ConsoleOutputService(private val project: Project) {
         } else {
             builder.appendLine("共找到 ${topCallers.size} 个顶层调用者:")
             builder.appendLine()
-
-            topCallers.forEachIndexed { index, methodInfo ->
-                builder.appendLine("【${index + 1}】")
-                // 1. 包路径（必填）
-                builder.appendLine("    包路径: ${methodInfo.packageName.ifEmpty { "(未知)" }}")
-                // 2. 类名.方法签名（必填）
-                builder.appendLine("    方法: ${methodInfo.simpleClassName}.${methodInfo.methodSignature}")
-                // 3. 类的功能注释（可选）
-                if (methodInfo.classComment.isNotEmpty()) {
-                    builder.appendLine("    类功能注释: ${methodInfo.classComment}")
-                }
-                // 4. 方法的功能注释（可选）
-                if (methodInfo.functionComment.isNotEmpty()) {
-                    builder.appendLine("    方法功能注释: ${methodInfo.functionComment}")
-                }
-                // 5. 方法类型（必填）
-                val methodType = if (methodInfo.isExternalInterface()) "供外部调用的接口" else "普通方法"
-                builder.appendLine("    方法类型: $methodType")
-                // 6. 请求类型（仅接口时显示）
-                if (methodInfo.isExternalInterface() && methodInfo.httpMethod.isNotEmpty()) {
-                    builder.appendLine("    请求类型: ${methodInfo.httpMethod}")
-                }
-                // 7. 请求路径（仅接口时显示）
-                if (methodInfo.isExternalInterface() && methodInfo.requestPath.isNotEmpty()) {
-                    builder.appendLine("    请求路径: ${methodInfo.requestPath}")
-                }
-                builder.appendLine()
+            
+            // 构建表格数据
+            val headers = listOf("Seq", "Type", "Request Path", "Method", "Class Comment", "Method Comment", "Package")
+            val rows = topCallers.mapIndexed { index, methodInfo ->
+                listOf(
+                    (index + 1).toString(),
+                    if (methodInfo.isExternalInterface()) "API" else "Normal",
+                    methodInfo.requestPath.ifEmpty { "-" },
+                    "${methodInfo.simpleClassName}.${methodInfo.methodSignature}",
+                    methodInfo.classComment.ifEmpty { "-" },
+                    methodInfo.functionComment.ifEmpty { "-" },
+                    methodInfo.packageName.ifEmpty { "-" }
+                )
             }
+            
+            // 计算每列的最大宽度
+            val columnWidths = headers.indices.map { colIndex ->
+                val headerWidth = getDisplayWidth(headers[colIndex])
+                val maxDataWidth = rows.maxOfOrNull { getDisplayWidth(it[colIndex]) } ?: 0
+                maxOf(headerWidth, maxDataWidth)
+            }
+            
+            // 构建表格
+            val tableOutput = buildAsciiTable(headers, rows, columnWidths)
+            builder.append(tableOutput)
         }
 
         builder.appendLine("==========================================")
 
         return builder.toString()
+    }
+
+    /**
+     * 构建带 Statement ID 的顶层调用者输出内容（SQL 片段模式）
+     * 列顺序与 TreeTable 保持一致：Seq、Type、Request Path、Method FQN、Class Comment、Method Comment、StatementID
+     * 注意：包路径已包含在 Method FQN 中，因此使用全限定方法名代替
+     */
+    private fun buildTopCallersOutputWithStatements(
+        sourceMethodName: String,
+        topCallersWithStatements: List<TopCallerWithStatement>
+    ): String {
+        val builder = StringBuilder()
+
+        builder.appendLine("========== 顶层调用者分析结果 ==========")
+        builder.appendLine("时间: ${dateFormat.format(Date())}")
+        builder.appendLine("源位置: $sourceMethodName")
+        builder.appendLine("------------------------------------------")
+
+        if (topCallersWithStatements.isEmpty()) {
+            builder.appendLine("未找到顶层调用者，当前 SQL 片段没有被任何 Statement 引用。")
+        } else {
+            // 按顶层调用者分组，统计唯一的顶层调用者数量
+            val groupedByMethod = topCallersWithStatements.groupBy { it.methodInfo.qualifiedName }
+            builder.appendLine("共找到 ${groupedByMethod.size} 个顶层调用者:")
+            builder.appendLine()
+            
+            // 构建表格数据（与 TreeTable 列保持一致）
+            val headers = listOf("Seq", "Type", "Request Path", "Method FQN", "Class Comment", "Method Comment", "StatementID")
+            val rows = mutableListOf<List<String>>()
+            var seqNumber = 0
+            
+            for ((_, group) in groupedByMethod) {
+                seqNumber++
+                val methodInfo = group.first().methodInfo
+                val statementIds = group.map { it.statementId }.distinct()
+                
+                // 每个 StatementID 输出一行
+                for (statementId in statementIds) {
+                    rows.add(listOf(
+                        seqNumber.toString(),
+                        if (methodInfo.isExternalInterface()) "API" else "Normal",
+                        methodInfo.requestPath.ifEmpty { "-" },
+                        "${methodInfo.simpleClassName}.${methodInfo.methodSignature}",
+                        methodInfo.classComment.ifEmpty { "-" },
+                        methodInfo.functionComment.ifEmpty { "-" },
+                        statementId
+                    ))
+                }
+            }
+            
+            // 计算每列的最大宽度
+            val columnWidths = headers.indices.map { colIndex ->
+                val headerWidth = getDisplayWidth(headers[colIndex])
+                val maxDataWidth = rows.maxOfOrNull { getDisplayWidth(it[colIndex]) } ?: 0
+                maxOf(headerWidth, maxDataWidth)
+            }
+            
+            // 构建表格
+            val tableOutput = buildAsciiTable(headers, rows, columnWidths)
+            builder.append(tableOutput)
+        }
+
+        builder.appendLine("==========================================")
+
+        return builder.toString()
+    }
+    
+    /**
+     * 构建 ASCII 表格
+     */
+    private fun buildAsciiTable(
+        headers: List<String>,
+        rows: List<List<String>>,
+        columnWidths: List<Int>
+    ): String {
+        val builder = StringBuilder()
+        
+        // 构建分隔线
+        val separator = buildSeparatorLine(columnWidths)
+        
+        // 表头
+        builder.appendLine(separator)
+        builder.appendLine(buildDataRow(headers, columnWidths))
+        builder.appendLine(separator)
+        
+        // 数据行
+        rows.forEach { row ->
+            builder.appendLine(buildDataRow(row, columnWidths))
+        }
+        
+        // 底部分隔线
+        builder.appendLine(separator)
+        
+        return builder.toString()
+    }
+    
+    /**
+     * 构建分隔线
+     */
+    private fun buildSeparatorLine(columnWidths: List<Int>): String {
+        val builder = StringBuilder("+")
+        columnWidths.forEach { width ->
+            builder.append("-".repeat(width + 2)) // +2 为左右内边距
+            builder.append("+")
+        }
+        return builder.toString()
+    }
+    
+    /**
+     * 构建数据行
+     */
+    private fun buildDataRow(data: List<String>, columnWidths: List<Int>): String {
+        val builder = StringBuilder("|")
+        data.forEachIndexed { index, value ->
+            val width = columnWidths[index]
+            val paddedValue = padString(value, width)
+            builder.append(" $paddedValue ")
+            builder.append("|")
+        }
+        return builder.toString()
+    }
+    
+    /**
+     * 字符串填充到指定宽度（左对齐）
+     * 支持中文字符（中文字符占用 2 个显示宽度）
+     */
+    private fun padString(str: String, targetWidth: Int): String {
+        val currentWidth = getDisplayWidth(str)
+        val padding = targetWidth - currentWidth
+        return if (padding > 0) {
+            str + " ".repeat(padding)
+        } else {
+            str
+        }
+    }
+    
+    /**
+     * 获取字符串的显示宽度
+     * 中文字符占 2 个宽度，英文字符占 1 个宽度
+     */
+    private fun getDisplayWidth(str: String): Int {
+        return str.sumOf { char ->
+            if (char.code > 127) 2.toInt() else 1.toInt()
+        }
     }
 }

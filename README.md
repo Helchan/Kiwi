@@ -124,6 +124,8 @@ Kiwi 是一款专为 Spring 项目开发设计的 IntelliJ IDEA 插件，旨在�
 **TreeTable 交互功能：**
 - 展开/折叠节点查看详细信息
 - 右键菜单支持跳转到源码、跳转到 XML、Copy Expanded Statement、复制
+- 表头点击排序（支持类型、请求路径、方法列）
+- 默认排序规则：API 优先、路径升序、方法名升序
 - Excel 导出功能，支持单元格合并
 
 ## 安装

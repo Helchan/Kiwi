@@ -1,5 +1,35 @@
 # Kiwi Changelog
 
+## [0.0.80]
+### Changed
+- 同步更新 Kiwi产品说明书.md 和 README.md 文档，确保与代码功能保持一致
+- 产品说明书新增 v0.0.73-v0.0.79 版本历史记录
+- README.md 补充 TreeTable 表头排序功能和默认排序规则说明
+
+## [0.0.79]
+### Fixed
+- 修复 Get Top Callers Information 功能的数据一致性问题
+  - 在 SQL 片段模式下，控制台输出现在包含 StatementID 列，与 TreeTable 面板保持一致
+  - 新增 ConsoleOutputService.outputTopCallersInfoWithStatements 方法支持带 StatementID 的输出
+  - 控制台 ASCII 表格列顺序：Seq、Type、Request Path、Method FQN、Class Comment、Method Comment、StatementID
+  - 确保无论通过 Java 方法、MyBatis Statement 还是 SQL 片段触发，控制台输出都与面板显示保持同步
+
+## [0.0.78]
+### Changed
+- 将 Top Callers 功能界面文本改为英文
+  - 弹窗标题："顶层调用者列表" → "Top Callers List"
+  - 列标题：序号→Seq, 类型→Type, 请求路径→Request Path, 方法→Method, 类功能注释→Class Comment, 方法功能注释→Method Comment, 包路径→Package
+  - Excel 导出 Sheet 名称："顶层调用者" → "Top Callers"
+  - 控制台 ASCII 表格列标题同步更新
+
+## [0.0.77]
+### Changed
+- 优化顶层调用者控制台输出格式，改为 ASCII 表格形式
+  - 列顺序与 TreeTable 弹窗保持一致：序号、类型、请求路径、方法、类功能注释、方法功能注释、包路径
+  - 使用 "|" 和 "-" 字符绘制表格边框
+  - 列宽根据内容自适应
+  - 支持中文字符宽度计算（中文占 2 个字符宽度）
+
 ## [0.0.76]
 ### Fixed
 - 修复 TreeTable 表头光标样式问题

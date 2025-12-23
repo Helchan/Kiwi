@@ -80,9 +80,9 @@ class TopCallersTreeTableDialog private constructor(
      */
     enum class SortColumn(val columnIndex: Int, val displayName: String) {
         NONE(-1, ""),
-        TYPE(1, "类型"),
-        REQUEST_PATH(2, "请求路径"),
-        METHOD(3, "方法")
+        TYPE(1, "Type"),
+        REQUEST_PATH(2, "Request Path"),
+        METHOD(3, "Method")
     }
 
     /**
@@ -182,7 +182,7 @@ class TopCallersTreeTableDialog private constructor(
     }
 
     init {
-        title = "顶层调用者列表"
+        title = "Top Callers List"
         isModal = false
         init()
     }
@@ -551,7 +551,7 @@ class TopCallersTreeTableDialog private constructor(
     private fun createColumns(): Array<ColumnInfo<*, *>> {
         val columns = mutableListOf<ColumnInfo<*, *>>()
         
-        columns.add(object : ColumnInfo<Any?, String>("序号") {
+        columns.add(object : ColumnInfo<Any?, String>("Seq") {
             override fun valueOf(item: Any?): String {
                 return when (val data = (item as? DefaultMutableTreeNode)?.userObject) {
                     is TreeNodeData.TopCallerData -> data.seqNumber.toString()
@@ -560,7 +560,7 @@ class TopCallersTreeTableDialog private constructor(
             }
         })
         
-        columns.add(object : ColumnInfo<Any?, String>("类型") {
+        columns.add(object : ColumnInfo<Any?, String>("Type") {
             override fun valueOf(item: Any?): String {
                 return when (val data = (item as? DefaultMutableTreeNode)?.userObject) {
                     is TreeNodeData.TopCallerData -> data.type
@@ -569,7 +569,7 @@ class TopCallersTreeTableDialog private constructor(
             }
         })
         
-        columns.add(object : ColumnInfo<Any?, String>("请求路径") {
+        columns.add(object : ColumnInfo<Any?, String>("Request Path") {
             override fun valueOf(item: Any?): String {
                 return when (val data = (item as? DefaultMutableTreeNode)?.userObject) {
                     is TreeNodeData.TopCallerData -> data.methodInfo.requestPath
@@ -578,7 +578,7 @@ class TopCallersTreeTableDialog private constructor(
             }
         })
         
-        columns.add(object : ColumnInfo<Any?, String>("方法") {
+        columns.add(object : ColumnInfo<Any?, String>("Method") {
             override fun valueOf(item: Any?): String {
                 return when (val data = (item as? DefaultMutableTreeNode)?.userObject) {
                     is TreeNodeData.TopCallerData -> data.methodDisplay
@@ -587,7 +587,7 @@ class TopCallersTreeTableDialog private constructor(
             }
         })
         
-        columns.add(object : ColumnInfo<Any?, String>("类功能注释") {
+        columns.add(object : ColumnInfo<Any?, String>("Class Comment") {
             override fun valueOf(item: Any?): String {
                 return when (val data = (item as? DefaultMutableTreeNode)?.userObject) {
                     is TreeNodeData.TopCallerData -> data.methodInfo.classComment
@@ -596,7 +596,7 @@ class TopCallersTreeTableDialog private constructor(
             }
         })
         
-        columns.add(object : ColumnInfo<Any?, String>("方法功能注释") {
+        columns.add(object : ColumnInfo<Any?, String>("Method Comment") {
             override fun valueOf(item: Any?): String {
                 return when (val data = (item as? DefaultMutableTreeNode)?.userObject) {
                     is TreeNodeData.TopCallerData -> data.methodInfo.functionComment
@@ -605,7 +605,7 @@ class TopCallersTreeTableDialog private constructor(
             }
         })
         
-        columns.add(object : ColumnInfo<Any?, String>("包路径") {
+        columns.add(object : ColumnInfo<Any?, String>("Package") {
             override fun valueOf(item: Any?): String {
                 return when (val data = (item as? DefaultMutableTreeNode)?.userObject) {
                     is TreeNodeData.TopCallerData -> data.methodInfo.packageName
@@ -1166,7 +1166,7 @@ class TopCallersTreeTableDialog private constructor(
             val file = File(outDir, fileName)
             
             XSSFWorkbook().use { workbook ->
-                val sheet = workbook.createSheet("顶层调用者")
+                val sheet = workbook.createSheet("Top Callers")
                 
                 // 创建表头样式
                 val headerStyle = workbook.createCellStyle().apply {
@@ -1180,9 +1180,9 @@ class TopCallersTreeTableDialog private constructor(
                 
                 // 创建表头行
                 val columnNames = if (isSqlFragmentMode) {
-                    arrayOf("序号", "类型", "请求路径", "方法", "类功能注释", "方法功能注释", "包路径", "StatementID")
+                    arrayOf("Seq", "Type", "Request Path", "Method", "Class Comment", "Method Comment", "Package", "StatementID")
                 } else {
-                    arrayOf("序号", "类型", "请求路径", "方法", "类功能注释", "方法功能注释", "包路径")
+                    arrayOf("Seq", "Type", "Request Path", "Method", "Class Comment", "Method Comment", "Package")
                 }
                 val headerRow = sheet.createRow(0)
                 columnNames.forEachIndexed { index, name ->

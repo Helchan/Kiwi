@@ -327,10 +327,11 @@ class FindTopCallerAction : AnAction() {
             return
         }
 
-        // 提取唯一的 MethodInfo 列表用于控制台输出
+        // 提取唯一的 MethodInfo 列表用于统计
         val uniqueMethodInfoList = topCallersWithStatements.map { it.methodInfo }.distinctBy { it.qualifiedName }
 
-        consoleOutputService.outputTopCallersInfo("SQL Fragment: $fragmentFullId", uniqueMethodInfoList)
+        // 使用新方法输出带 StatementID 的信息，与 TreeTable 保持一致
+        consoleOutputService.outputTopCallersInfoWithStatements("SQL Fragment: $fragmentFullId", topCallersWithStatements)
         NotificationService(project).showInfoNotification("找到 ${uniqueMethodInfoList.size} 个顶层调用者")
 
         if (topCallersWithStatements.isNotEmpty()) {
