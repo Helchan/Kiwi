@@ -35,9 +35,13 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.atomic.AtomicReference
 import javax.swing.*
+import javax.swing.table.DefaultTableCellRenderer
+import javax.swing.table.JTableHeader
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.TreePath
 import com.intellij.ui.treeStructure.treetable.TreeTable
+import java.awt.Component
+import java.awt.Cursor
 
 /**
  * 顶层调用者 TreeTable 展示对话框
@@ -56,11 +60,30 @@ class TopCallersTreeTableDialog private constructor(
     private val logger = thisLogger()
     private lateinit var treeTable: TreeTable
     private lateinit var treeModel: ListTreeTableModelOnColumns
+    private lateinit var scrollPane: JBScrollPane
     
     // 用于 Excel 导出的扁平化数据
     private val exportDataList = mutableListOf<ExportRowData>()
     // 记录单元格合并信息（用于 Excel 导出）：行索引 -> (startRow, rowSpan)
     private val mergeInfo = mutableMapOf<Int, Pair<Int, Int>>()
+    
+    // 排序状态管理
+    private var currentSortColumn: SortColumn = SortColumn.NONE
+    private var sortAscending: Boolean = true
+    
+    // 原始数据存储（用于重新排序）
+    private val originalTopCallers: List<MethodInfo> = topCallers.toList()
+    private val originalTopCallersWithStatements: List<TopCallerWithStatement>? = topCallersWithStatements?.toList()
+    
+    /**
+     * 可排序的列枚举
+     */
+    enum class SortColumn(val columnIndex: Int, val displayName: String) {
+        NONE(-1, ""),
+        TYPE(1, "类型"),
+        REQUEST_PATH(2, "请求路径"),
+        METHOD(3, "方法")
+    }
 
     /**
      * 树节点数据类
@@ -200,11 +223,14 @@ class TopCallersTreeTableDialog private constructor(
         // 使用 AUTO_RESIZE_OFF 配合手动按比例分配列宽
         treeTable.autoResizeMode = JTable.AUTO_RESIZE_OFF
         
+        // 设置表头排序点击监听和渲染器
+        setupHeaderSorting()
+        
         // 计算每列的内容宽度比例
         val columnContentWidths = calculateColumnContentWidths()
         
         // 添加滚动面板的尺寸变化监听器，实现响应式布局
-        val scrollPane = JBScrollPane(treeTable)
+        scrollPane = JBScrollPane(treeTable)
         scrollPane.addComponentListener(object : ComponentAdapter() {
             override fun componentResized(e: ComponentEvent?) {
                 adjustColumnWidthsByProportion(columnContentWidths, scrollPane.viewport.width)
@@ -216,6 +242,307 @@ class TopCallersTreeTableDialog private constructor(
 
         panel.add(scrollPane, BorderLayout.CENTER)
         return panel
+    }
+    
+    /**
+     * 设置表头排序点击监听和渲染器
+     */
+    private fun setupHeaderSorting() {
+        val header = treeTable.tableHeader
+        
+        // 设置自定义表头渲染器（显示排序箭头）
+        header.defaultRenderer = SortableHeaderRenderer(header.defaultRenderer)
+        
+        // 添加表头点击监听
+        header.addMouseListener(object : MouseAdapter() {
+            override fun mouseClicked(e: MouseEvent) {
+                // 如果在列边缘区域，不触发排序（留给列宽拖拽）
+                if (isOnColumnBorder(e.point, header)) return
+                
+                val columnIndex = header.columnAtPoint(e.point)
+                if (columnIndex < 0) return
+                
+                // 检查是否是可排序的列
+                val sortColumn = getSortColumnByIndex(columnIndex)
+                if (sortColumn == SortColumn.NONE) return
+                
+                // 切换排序方向
+                if (currentSortColumn == sortColumn) {
+                    sortAscending = !sortAscending
+                } else {
+                    currentSortColumn = sortColumn
+                    sortAscending = true
+                }
+                
+                // 重新排序并重建树
+                rebuildTreeWithCurrentSort()
+                
+                // 刷新表头显示
+                header.repaint()
+            }
+            
+            override fun mouseEntered(e: MouseEvent) {
+                updateHeaderCursor(e.point, header)
+            }
+        })
+        
+        // 添加鼠标移动监听以更新光标
+        header.addMouseMotionListener(object : MouseAdapter() {
+            override fun mouseMoved(e: MouseEvent) {
+                updateHeaderCursor(e.point, header)
+            }
+            
+            override fun mouseDragged(e: MouseEvent) {
+                // 拖拽时保持列宽调整光标
+                if (isOnColumnBorder(e.point, header)) {
+                    header.cursor = Cursor.getPredefinedCursor(Cursor.E_RESIZE_CURSOR)
+                }
+            }
+        })
+    }
+    
+    /**
+     * 检测鼠标是否在列边缘区域（用于列宽拖拽）
+     * @param point 鼠标位置
+     * @param header 表头组件
+     * @return 是否在列边缘区域
+     */
+    private fun isOnColumnBorder(point: java.awt.Point, header: JTableHeader): Boolean {
+        val columnModel = header.columnModel
+        val borderTolerance = 4 // 边缘检测范围（像素）
+        
+        var columnX = 0
+        for (i in 0 until columnModel.columnCount) {
+            columnX += columnModel.getColumn(i).width
+            // 检查是否在列右边缘附近
+            if (point.x >= columnX - borderTolerance && point.x <= columnX + borderTolerance) {
+                return true
+            }
+        }
+        return false
+    }
+    
+    /**
+     * 更新表头光标样式
+     * - 列边缘区域：显示列宽调整光标
+     * - 可排序列内部：显示手型光标
+     * - 其他区域：默认光标
+     */
+    private fun updateHeaderCursor(point: java.awt.Point, header: JTableHeader) {
+        header.cursor = when {
+            isOnColumnBorder(point, header) -> Cursor.getPredefinedCursor(Cursor.E_RESIZE_CURSOR)
+            getSortColumnByIndex(header.columnAtPoint(point)) != SortColumn.NONE -> Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+            else -> Cursor.getDefaultCursor()
+        }
+    }
+    
+    /**
+     * 根据列索引获取对应的排序列枚举
+     */
+    private fun getSortColumnByIndex(columnIndex: Int): SortColumn {
+        // StatementID 列（SQL 片段模式下的最后一列）不支持排序
+        if (isSqlFragmentMode && columnIndex == treeTable.columnCount - 1) {
+            return SortColumn.NONE
+        }
+        return SortColumn.values().find { it.columnIndex == columnIndex } ?: SortColumn.NONE
+    }
+    
+    /**
+     * 根据当前排序状态重建树
+     */
+    private fun rebuildTreeWithCurrentSort() {
+        // 清空导出数据和合并信息
+        exportDataList.clear()
+        mergeInfo.clear()
+        
+        // 获取当前排序比较器
+        val comparator = getCurrentSortComparator()
+        
+        // 重建树模型
+        val root = treeModel.root as DefaultMutableTreeNode
+        root.removeAllChildren()
+        
+        if (isSqlFragmentMode && originalTopCallersWithStatements != null) {
+            buildTreeWithStatementsAndComparator(root, originalTopCallersWithStatements, comparator)
+        } else {
+            buildTreeNormalWithComparator(root, originalTopCallers, comparator)
+        }
+        
+        // 通知模型更新
+        treeModel.reload()
+        
+        // 展开所有节点
+        expandAllNodes()
+    }
+    
+    /**
+     * 获取当前排序比较器
+     */
+    private fun getCurrentSortComparator(): Comparator<MethodInfo> {
+        if (currentSortColumn == SortColumn.NONE) {
+            return methodInfoComparator
+        }
+        
+        val primaryComparator = when (currentSortColumn) {
+            SortColumn.TYPE -> Comparator<MethodInfo> { a, b ->
+                val typeA = if (a.isExternalInterface()) "API" else "Normal"
+                val typeB = if (b.isExternalInterface()) "API" else "Normal"
+                typeA.compareTo(typeB)
+            }
+            SortColumn.REQUEST_PATH -> Comparator<MethodInfo> { a, b ->
+                a.requestPath.compareTo(b.requestPath)
+            }
+            SortColumn.METHOD -> Comparator<MethodInfo> { a, b ->
+                val methodA = "${a.simpleClassName}.${a.methodSignature}"
+                val methodB = "${b.simpleClassName}.${b.methodSignature}"
+                methodA.compareTo(methodB)
+            }
+            SortColumn.NONE -> methodInfoComparator
+        }
+        
+        // 应用升序/降序
+        val orderedPrimary = if (sortAscending) primaryComparator else primaryComparator.reversed()
+        
+        // 组合次要排序条件（使用默认排序的其他字段作为次要条件）
+        return orderedPrimary.thenComparing(methodInfoComparator)
+    }
+    
+    /**
+     * 普通模式构建树（使用指定比较器）
+     */
+    private fun buildTreeNormalWithComparator(
+        root: DefaultMutableTreeNode, 
+        topCallers: List<MethodInfo>,
+        comparator: Comparator<MethodInfo>
+    ) {
+        val sortedCallers = topCallers.sortedWith(comparator)
+        
+        sortedCallers.forEachIndexed { index, methodInfo ->
+            val nodeData = TreeNodeData.TopCallerData(
+                seqNumber = index + 1,
+                methodInfo = methodInfo
+            )
+            val node = DefaultMutableTreeNode(nodeData)
+            root.add(node)
+            
+            exportDataList.add(ExportRowData(
+                seqNumber = index + 1,
+                type = nodeData.type,
+                requestPath = methodInfo.requestPath,
+                methodDisplay = nodeData.methodDisplay,
+                classComment = methodInfo.classComment,
+                functionComment = methodInfo.functionComment,
+                packageName = methodInfo.packageName
+            ))
+        }
+    }
+    
+    /**
+     * SQL 片段模式构建树（使用指定比较器）
+     */
+    private fun buildTreeWithStatementsAndComparator(
+        root: DefaultMutableTreeNode,
+        data: List<TopCallerWithStatement>,
+        comparator: Comparator<MethodInfo>
+    ) {
+        val groupedByMethod = data.groupBy { it.methodInfo.qualifiedName }
+        
+        val sortedGroups = groupedByMethod.entries.sortedWith(
+            Comparator { a, b -> comparator.compare(a.value.first().methodInfo, b.value.first().methodInfo) }
+        )
+        
+        var seqNumber = 0
+        var exportRowIndex = 0
+        
+        for ((_, group) in sortedGroups) {
+            seqNumber++
+            val methodInfo = group.first().methodInfo
+            val statementIds = group.map { it.statementId }.distinct()
+            
+            val nodeData = TreeNodeData.TopCallerData(
+                seqNumber = seqNumber,
+                methodInfo = methodInfo,
+                statementIds = statementIds
+            )
+            val parentNode = DefaultMutableTreeNode(nodeData)
+            root.add(parentNode)
+            
+            val startRow = exportRowIndex
+            val rowSpan = statementIds.size
+            
+            if (statementIds.size == 1) {
+                exportDataList.add(ExportRowData(
+                    seqNumber = seqNumber,
+                    type = nodeData.type,
+                    requestPath = methodInfo.requestPath,
+                    methodDisplay = nodeData.methodDisplay,
+                    classComment = methodInfo.classComment,
+                    functionComment = methodInfo.functionComment,
+                    packageName = methodInfo.packageName,
+                    statementId = statementIds.first(),
+                    isFirstOfGroup = true
+                ))
+                mergeInfo[exportRowIndex] = Pair(startRow, 1)
+                exportRowIndex++
+            } else {
+                for ((i, statementId) in statementIds.withIndex()) {
+                    val childData = TreeNodeData.StatementData(
+                        statementId = statementId,
+                        parentMethodInfo = methodInfo
+                    )
+                    val childNode = DefaultMutableTreeNode(childData)
+                    parentNode.add(childNode)
+                    
+                    exportDataList.add(ExportRowData(
+                        seqNumber = seqNumber,
+                        type = nodeData.type,
+                        requestPath = methodInfo.requestPath,
+                        methodDisplay = nodeData.methodDisplay,
+                        classComment = methodInfo.classComment,
+                        functionComment = methodInfo.functionComment,
+                        packageName = methodInfo.packageName,
+                        statementId = statementId,
+                        isFirstOfGroup = (i == 0)
+                    ))
+                    mergeInfo[exportRowIndex] = Pair(startRow, rowSpan)
+                    exportRowIndex++
+                }
+            }
+        }
+        
+        logger.info("构建树完成：${seqNumber} 个顶层调用者，${exportDataList.size} 行导出数据")
+    }
+    
+    /**
+     * 自定义表头渲染器，显示排序箭头
+     */
+    private inner class SortableHeaderRenderer(
+        private val defaultRenderer: javax.swing.table.TableCellRenderer
+    ) : DefaultTableCellRenderer() {
+        
+        override fun getTableCellRendererComponent(
+            table: JTable,
+            value: Any?,
+            isSelected: Boolean,
+            hasFocus: Boolean,
+            row: Int,
+            column: Int
+        ): Component {
+            val component = defaultRenderer.getTableCellRendererComponent(
+                table, value, isSelected, hasFocus, row, column
+            )
+            
+            if (component is JLabel) {
+                val sortColumn = getSortColumnByIndex(column)
+                if (sortColumn != SortColumn.NONE && currentSortColumn == sortColumn) {
+                    // 添加排序箭头
+                    val arrow = if (sortAscending) " ▲" else " ▼"
+                    component.text = value.toString() + arrow
+                }
+            }
+            
+            return component
+        }
     }
     
     /**
