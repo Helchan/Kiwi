@@ -45,21 +45,39 @@ Kiwi 是一款专为 Spring 项目开发设计的 IntelliJ IDEA 插件，旨在�
 
 ### 3. Get Top Callers Information
 
-查找 Java 方法或 MyBatis Statement/SQL 片段的所有顶层调用者（入口方法），自动递归分析调用链，找到所有最终的 API 入口点。
+查找 Java 方法或 MyBatis Statement/SQL 片段的所有顶层调用者（入口方法），自动追溯调用链，找到所有最终的 API 入口点。
 
 **核心能力：**
 - 支持 Java 方法定义和方法调用表达式上触发
 - 支持 MyBatis XML Statement 上触发
 - **支持 SQL 片段（`<sql>` 标签）和 `<include>` refid 上触发**
-- 支持递归调用链分析（最大深度 50 层）
+- 使用广度优先搜索（BFS）算法递归分析调用链
+- 最大深度限制 50 层（MAX_DEPTH = 50）
 - 支持接口/父类方法调用追溯
 - 支持 Lambda 表达式调用追溯（追踪到声明位置）
 - 支持方法引用调用追溯（Class::method）
-- 智能过滤函数式接口方法（Consumer、Function 等）
+- 智能过滤函数式接口方法（Consumer.accept、Function.apply 等）
 - 自动排除测试代码，只搜索生产代码
 - 后台异步执行，不阻塞 IDE
 - **TreeTable 层级展示结果，支持展开/折叠**
 - **Excel 导出功能，支持单元格合并**
+
+**性能优化：**
+- 方法键缓存：避免重复计算方法签名
+- 生产代码范围缓存：缓存搜索范围提高效率
+- 批量查找：在单个 ReadAction 中完成所有查找操作
+- 并发安全：使用 ConcurrentHashMap 保证线程安全
+
+**异常处理：**
+- Dumb 模式等待：在索引未完成时自动等待
+- 取消操作支持：通过 ProgressManager 响应用户取消
+
+**函数式接口方法过滤列表：**
+- java.util.function: Consumer.accept、BiConsumer.accept、Function.apply、BiFunction.apply、Supplier.get、Predicate.test、BiPredicate.test、UnaryOperator.apply、BinaryOperator.apply
+- java.lang: Runnable.run
+- java.util.concurrent: Callable.call
+- Java Streams: Stream.forEach、Stream.map、Stream.filter、Stream.flatMap
+- Spring 框架: TransactionCallback.doInTransaction、RowMapper.mapRow、ResultSetExtractor.extractData
 
 **使用场景：**
 - 调用链分析：分析某个底层方法被哪些 API 入口调用

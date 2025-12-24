@@ -223,10 +223,13 @@ public class UserController {
 
 | 特点 | 说明 |
 |------|------|
-| 递归深度限制 | 最大 50 层递归深度，防止超深调用链或循环引用导致的性能问题 |
+| 广度优先搜索算法 | 使用 BFS 代替递归 DFS，避免深度递归导致的栈溢出，更容易控制和取消 |
+| 递归深度限制 | 最大 50 层深度限制（MAX_DEPTH = 50），防止超深调用链导致的性能问题 |
 | 函数式接口方法过滤 | 智能过滤 JDK 函数式接口方法（如 Consumer.accept、Function.apply），追溯到实际调用位置 |
-| 生产代码范围搜索 | 自动排除测试代码目录，只搜索生产代码中的调用关系 |
-| 循环引用保护 | 使用已访问集合检测循环引用，避免无限递归 |
+| 生产代码范围搜索 | 自动排除测试代码目录（通过 TestSourcesFilter），只搜索生产代码中的调用关系 |
+| 循环引用保护 | 使用已访问集合（visited）检测循环引用，避免无限递归 |
+| Dumb 模式处理 | 在索引未完成时自动等待 Smart Mode，避免 IndexNotReadyException |
+| 取消操作支持 | 通过 ProgressManager.checkCanceled() 支持用户取消长时间运行的操作 |
 
 #### 使用场景
 
@@ -309,15 +312,17 @@ public class UserController {
 
 #### 函数式接口方法过滤列表
 
-以下函数式接口方法会被智能过滤，自动追溯到实际调用位置：
+以下函数式接口方法会被智能过滤（定义在 `FUNCTIONAL_INTERFACE_METHODS` 常量中），自动追溯到实际调用位置：
 
-| 类别 | 方法 |
+| 类别 | 完整方法签名 |
 |------|------|
-| java.util.function | Consumer.accept、BiConsumer.accept、Function.apply、BiFunction.apply、Supplier.get、Predicate.test、BiPredicate.test、UnaryOperator.apply、BinaryOperator.apply |
-| java.lang | Runnable.run |
-| java.util.concurrent | Callable.call |
-| Java Streams | Stream.forEach、Stream.map、Stream.filter、Stream.flatMap |
-| Spring 框架回调 | TransactionCallback.doInTransaction、RowMapper.mapRow、ResultSetExtractor.extractData |
+| java.util.function | `Consumer.accept`、`BiConsumer.accept`、`Function.apply`、`BiFunction.apply`、`Supplier.get`、`Predicate.test`、`BiPredicate.test`、`UnaryOperator.apply`、`BinaryOperator.apply` |
+| java.lang | `Runnable.run` |
+| java.util.concurrent | `Callable.call` |
+| Java Streams | `Stream.forEach`、`Stream.map`、`Stream.filter`、`Stream.flatMap` |
+| Spring 框架回调 | `TransactionCallback.doInTransaction`、`RowMapper.mapRow`、`ResultSetExtractor.extractData` |
+
+**注意**：这些方法在调用链分析时会被跳过，系统会自动追溯到 Lambda 表达式或方法引用的声明位置，从那里继续向上查找真正的调用者。
 
 #### 使用示例
 
@@ -565,25 +570,39 @@ src/main/kotlin/com/euver/kiwi/
 - **特点**：**异步执行**，不阻塞 IDE 主线程
 - **核心功能**：
   - 从指定方法开始向上追溯调用链，找到所有顶层调用者（入口方法）
-  - 最大递归深度 50 层（MAX_DEPTH）
+  - 最大深度限制 50 层（MAX_DEPTH = 50）
+- **算法特性**：
+  - 使用**广度优先搜索（BFS）**代替深度优先递归
+  - 避免栈溢出，更容易控制和取消操作
+  - 通过 `ArrayDeque` 实现高效的队列操作
 - **支持的调用链场景**：
   - 直接方法调用：通过 `MethodReferencesSearch` 查找方法引用
   - 接口/父类方法调用：通过 `findSuperMethods` 查找所有父方法，并搜索其调用者
-  - Lambda 表达式调用：通过 `FunctionalExpressionSearch` 查找 Lambda 声明位置
+  - Lambda 表达式调用：通过 `FunctionalExpressionSearch` 查找 `PsiLambdaExpression` 声明位置
   - 方法引用调用：通过 `PsiMethodReferenceExpression` 识别方法引用
 - **函数式接口方法过滤**：
   - 智能过滤 JDK 函数式接口方法（如 Consumer.accept、Function.apply 等）
   - 通过 Lambda/方法引用追溯实际调用位置
-  - 支持 Spring 框架回调接口（TransactionCallback、RowMapper 等）
+  - 支持 Spring 框架回调接口（TransactionCallback、RowMapper、ResultSetExtractor）
+- **性能优化**：
+  - 方法键缓存（`methodKeyCache`）：使用 `ConcurrentHashMap` 缓存方法签名，避免重复计算
+  - 生产代码搜索范围缓存（`cachedProductionScope`）：缓存搜索范围，提高查找效率
+  - 批量查找（`findAllCallersBatched`）：在单个 ReadAction 中完成所有查找操作
+  - 并发安全：使用 `@Volatile` 和 `ConcurrentHashMap` 保证线程安全
 - **保护机制**：
   - 循环引用检测：使用 `visited` 集合记录已访问方法，避免无限递归
   - 深度限制：超过 50 层自动终止，记录警告日志
-  - 生产代码范围搜索：自动排除测试代码目录
+  - 生产代码范围搜索：通过 `ProjectRootManager.fileIndex.isInTestSourceContent()` 自动排除测试代码目录
+- **异常处理**：
+  - Dumb 模式等待：使用 `DumbService.waitForSmartMode()` 等待索引完成
+  - 取消操作支持：通过 `ProgressManager.checkCanceled()` 响应用户取消
+  - `ProcessCanceledException` 重新抛出，确保取消操作正确传播
 - **关键方法**：
-  - `findTopCallers(method)`: 查找指定方法的所有顶层调用者
-  - `findAllCallers(method)`: 查找方法的所有调用者（包含接口/父类方法调用）
+  - `findTopCallers(method)`: 查找指定方法的所有顶层调用者（公开 API）
+  - `findTopCallersBFS(...)`: 使用 BFS 算法查找顶层调用者（内部方法）
+  - `findAllCallersBatched(method)`: 批量查找方法的所有调用者
   - `findLambdaDeclarationCallers(method)`: 查找 Lambda/方法引用的声明位置
-  - `createProductionScope()`: 创建生产代码搜索范围
+  - `getProductionScope()`: 获取缓存的生产代码搜索范围
 
 #### ExpandStatementUseCase（应用层用例）
 - **职责**：编排展开 Statement 的完整流程
