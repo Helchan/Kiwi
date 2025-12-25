@@ -2,7 +2,7 @@
 <idea-plugin>
     <id>com.euver.kiwi</id>
     <name>Kiwi</name>
-    <vendor>euver</vendor>
+    <vendor>Helchan</vendor>
 
     <depends>com.intellij.modules.platform</depends>
     <depends>com.intellij.modules.xml</depends>

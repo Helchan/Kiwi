@@ -8,6 +8,14 @@
 Kiwi 是一款专为 Spring 项目开发设计的 IntelliJ IDEA 插件，旨在提升开发者对 Spring 项目源码的分析和开发效率。该插件提供了一系列实用工具，帮助开发者快速理解和处理项目中的复杂代码结构。
 <!-- Plugin description end -->
 
+## 插件信息
+
+- **当前版本**: 0.0.100
+- **支持 IDE**: IntelliJ IDEA 2023.1+
+- **开发语言**: Kotlin 2.2.21
+- **JDK 版本**: 21
+- **Gradle 版本**: 9.2.1
+
 ## 功能特性
 
 ### 1. Copy Expanded Statement
@@ -164,7 +172,95 @@ Kiwi 是一款专为 Spring 项目开发设计的 IntelliJ IDEA 插件，旨在�
 
 ## 环境要求
 
-- IntelliJ IDEA 2023.1 或更高版本
+- **IntelliJ IDEA**: 2023.1 或更高版本
+- **JDK**: 构建需要 JDK 21
+
+## 构建插件
+
+如果你需要从源码构建插件：
+
+```bash
+# 设置 JDK 21
+export JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-21.jdk/Contents/Home
+
+# 清理并构建插件
+./gradlew clean buildPlugin
+```
+
+构建产物位于：`build/distributions/Kiwi-0.0.100.zip`
+
+## 项目结构
+
+```
+Kiwi/
+├── src/main/kotlin/com/euver/kiwi/
+│   ├── action/                              # 表示层 - 用户交互
+│   │   ├── AssembleSqlAction.kt             # MyBatis SQL 组装 Action
+│   │   ├── ExtractMethodInfoAction.kt       # 提取方法信息 Action
+│   │   └── FindTopCallerAction.kt           # 查找顶层调用者 Action
+│   ├── application/                         # 应用层 - 用例编排
+│   │   └── ExpandStatementUseCase.kt        # 展开 Statement 用例
+│   ├── domain/                              # 领域层 - 核心业务逻辑
+│   │   ├── model/
+│   │   │   ├── ExpandContext.kt             # 展开上下文
+│   │   │   ├── MethodInfo.kt                # 方法信息模型
+│   │   │   └── TopCallerWithStatement.kt    # 顶层调用者与 Statement 关联
+│   │   └── service/
+│   │       ├── MethodInfoExtractorService.kt # 方法信息提取服务
+│   │       ├── SqlFragmentResolver.kt       # 片段解析器接口
+│   │       ├── SqlFragmentUsageFinderService.kt # SQL 片段使用查找服务
+│   │       ├── StatementExpanderService.kt  # 核心展开服务
+│   │       └── TopCallerFinderService.kt    # 顶层调用者查找服务
+│   ├── infrastructure/                      # 基础设施层
+│   │   └── resolver/
+│   │       └── SqlFragmentResolverImpl.kt   # 片段解析器实现
+│   ├── model/                               # 共享数据模型
+│   │   ├── AssemblyResult.kt                # 组装结果
+│   │   ├── SqlFragmentInfo.kt               # SQL 片段信息
+│   │   └── StatementInfo.kt                 # Statement 信息
+│   ├── parser/
+│   │   └── MyBatisXmlParser.kt              # XML 解析器
+│   └── service/                             # 基础服务与 UI 组件
+│       ├── ConsoleOutputService.kt          # 控制台输出服务
+│       ├── MapperIndexService.kt            # Mapper 索引服务
+│       ├── MyBatisSqlToolWindowFactory.kt   # 控制台窗口工厂
+│       ├── NotificationService.kt           # 通知服务
+│       ├── SqlAssembler.kt                  # SQL 组装服务
+│       ├── TopCallersTableDialog.kt         # 表格弹窗（基础版）
+│       └── TopCallersTreeTableDialog.kt     # TreeTable 弹窗
+├── src/main/resources/META-INF/
+│   └── plugin.xml                           # 插件配置文件
+├── build.gradle.kts                         # Gradle 构建配置
+├── gradle.properties                        # Gradle 属性配置
+├── CHANGELOG.md                             # 版本变更日志
+├── Kiwi产品说明书.md                      # 详细产品文档
+└── README.md                                # 项目说明文档
+```
+
+## 技术架构
+
+Kiwi 采用 **DDD（领域驱动设计）分层架构**，各层职责清晰：
+
+- **表示层 (Presentation)**: 处理用户交互，触发应用服务
+- **应用层 (Application)**: 编排用例流程，协调领域服务
+- **领域层 (Domain)**: 核心业务逻辑，可复用的展开能力
+- **基础设施层 (Infrastructure)**: 技术实现，文件解析、索引等
+
+详细架构说明请查看 [Kiwi产品说明书.md](./Kiwi产品说明书.md)。
+
+## 依赖项
+
+| 依赖 | 版本 |
+|------|------|
+| IntelliJ Platform | 2023.1+ |
+| Kotlin | 2.2.21 |
+| Gradle | 9.2.1 |
+| JDK | 21 |
+| Apache POI | 5.2.5 |
+| IntelliJ Platform Gradle Plugin | 2.10.5 |
+| Gradle Changelog Plugin | 2.5.0 |
+| Gradle Kover Plugin | 0.9.3 |
+| JUnit | 4.13.2 |
 
 ## 常见问题
 
@@ -185,6 +281,15 @@ Kiwi 是一款专为 Spring 项目开发设计的 IntelliJ IDEA 插件，旨在�
 ### 组装后的 SQL 格式不美观？
 
 当前版本保留原始格式，不进行格式化。SQL 格式化功能将在后续版本中提供。
+
+## 版本历史
+
+### v0.0.100 (当前版本)
+- Get Top Callers Information 功能与 IDEA 原生 CallerMethodsTreeStructure 完全对齐
+- 新增 Javadoc 引用过滤和类型关联性检查
+- 增强异常处理，优化用户体验
+
+更多版本信息请查看 [CHANGELOG.md](./CHANGELOG.md)。
 
 ## 反馈与贡献
 

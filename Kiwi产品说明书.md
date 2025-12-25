@@ -9,8 +9,9 @@ Kiwi 是一款专为 Spring 项目开发设计的 IntelliJ IDEA 插件，旨在�
 | 属性 | 值 |
 |------|-----|
 | 插件名称 | Kiwi |
+| 当前版本 | 0.1.0 |
 | 插件 ID | com.euver.kiwi |
-| 开发者 | euver |
+| 开发者 | Helchan |
 | 支持 IDE 版本 | IntelliJ IDEA 2023.1+ |
 | 开发语言 | Kotlin |
 | JDK 版本 | 21 |
@@ -918,7 +919,23 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-21.jdk/Contents/Home
 
 ## 版本历史
 
-### v0.0.79（当前版本）
+### v0.0.100（当前版本）
+- Get Top Callers Information 功能与 IDEA 原生 CallerMethodsTreeStructure 完全对齐：
+  - 新增 Javadoc 引用过滤：跳过 Javadoc 中的引用（与原生 Hierarchy PsiUtil.isInsideJavadocComment 一致）
+  - 新增类型关联性检查：使用 areClassesRelated/areClassesDirectlyRelated 过滤不相关类的引用
+  - 新增 InheritanceUtil.isInheritorOrSelf 继承关系检查
+  - 增强异常处理：在 findAllCallersInternal 和 findLambdaDeclarationCallersInternal 中捕获 IndexNotReadyException，避免卡住
+  - 所有搜索方法统一处理 ProcessCanceledException，确保用户可随时取消
+  - 更新类文档注释，明确与 IDEA 原生 CallerMethodsTreeStructure 的一致性
+
+### v0.0.99
+- Get Top Callers Information 功能完全对齐 IDEA 原生 Hierarchy 实现：
+  - 使用 findDeepestSuperMethods() 替代 findSuperMethods()，查找最深层父方法，与原生 Hierarchy 一致
+  - 将整个 BFS 搜索过程包装在单个 runReadActionInSmartMode 中，减少多次调用开销
+  - 所有内部方法重命名为 xxxInternal，明确在 ReadAction 上下文中调用
+  - 彻底避免 IndexNotReadyException，与 IDEA 原生 Hierarchy 性能和准确性完全一致
+
+### v0.0.79
 - 修复 Get Top Callers Information 功能的数据一致性问题
 - 在 SQL 片段模式下，控制台输出现在包含 StatementID 列，与 TreeTable 面板保持一致
 - 控制台 ASCII 表格列顺序与弹窗同步
@@ -1022,6 +1039,11 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-21.jdk/Contents/Home
 | Kotlin | 2.2.21 |
 | Gradle | 9.2.1 |
 | JDK | 21 |
+| Apache POI（Excel导出） | 5.2.5 |
+| IntelliJ Platform Gradle Plugin | 2.10.5 |
+| Gradle Changelog Plugin | 2.5.0 |
+| Gradle Kover Plugin（代码覆盖率） | 0.9.3 |
+| JUnit | 4.13.2 |
 
 ---
 
