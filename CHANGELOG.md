@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.95
+- Get Top Callers 表格右键菜单文本国际化："跳转到源码" → "Go to Source"，"跳转到XML" → "Go to XML"，"复制" → "Copy"
+
+## 0.0.94
+- 调整右键菜单 Kiwi 目录内菜单项顺序，将 "Extract Method Information" 置于第一位
+
 ## 0.0.93
 - 弹出面板标签“源位置”改为英文 "Source"
 - Excel 导出文件名优化：使用触发的 ID 或方法名而非完整路径

@@ -1003,7 +1003,7 @@ class TopCallersTreeTableDialog private constructor(
                     // 多选模式：只显示"复制"菜单
                     if (isMultiSelect) {
                         val popupMenu = JPopupMenu()
-                        val copyItem = JMenuItem("复制")
+                        val copyItem = JMenuItem("Copy")
                         copyItem.addActionListener { copySelectedCells() }
                         popupMenu.add(copyItem)
                         popupMenu.show(e.component, e.x, e.y)
@@ -1039,7 +1039,7 @@ class TopCallersTreeTableDialog private constructor(
                     
                     if (isStatementIdColumn) {
                         // StatementID 列：跳转到XML、Copy Expanded Statement
-                        val navigateToXmlItem = JMenuItem("跳转到XML")
+                        val navigateToXmlItem = JMenuItem("Go to XML")
                         navigateToXmlItem.addActionListener {
                             when (nodeData) {
                                 is TreeNodeData.StatementData -> navigateToStatement(nodeData.statementId)
@@ -1066,7 +1066,7 @@ class TopCallersTreeTableDialog private constructor(
                         popupMenu.add(copyExpandedItem)
                     } else if (isMethodColumn) {
                         // Method 列：跳转到源码
-                        val navigateToSourceItem = JMenuItem("跳转到源码")
+                        val navigateToSourceItem = JMenuItem("Go to Source")
                         navigateToSourceItem.addActionListener {
                             when (nodeData) {
                                 is TreeNodeData.TopCallerData -> navigateToMethod(nodeData.methodInfo)
@@ -1082,7 +1082,7 @@ class TopCallersTreeTableDialog private constructor(
                     
                     // 复制菜单项放在最后
                     popupMenu.addSeparator()
-                    val copyItem = JMenuItem("复制")
+                    val copyItem = JMenuItem("Copy")
                     copyItem.addActionListener { copyCellContent(row, col) }
                     popupMenu.add(copyItem)
                     
@@ -1111,7 +1111,7 @@ class TopCallersTreeTableDialog private constructor(
                     // 多选模式：只显示"复制"菜单
                     if (isMultiSelect) {
                         val popupMenu = JPopupMenu()
-                        val copyItem = JMenuItem("复制")
+                        val copyItem = JMenuItem("Copy")
                         copyItem.addActionListener { copySelectedCells() }
                         popupMenu.add(copyItem)
                         popupMenu.show(e.component, e.x, e.y)
@@ -1134,7 +1134,7 @@ class TopCallersTreeTableDialog private constructor(
                     
                     // 复制菜单项放在最后（树列是第0列）
                     popupMenu.addSeparator()
-                    val copyItem = JMenuItem("复制")
+                    val copyItem = JMenuItem("Copy")
                     copyItem.addActionListener { copyCellContent(row, 0) }
                     popupMenu.add(copyItem)
                     

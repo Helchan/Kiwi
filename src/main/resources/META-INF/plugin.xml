@@ -23,15 +23,15 @@
                text="Kiwi"
                popup="true">
             <add-to-group group-id="EditorPopupMenu" anchor="first"/>
-            <action id="MyBatis.AssembleSql"
-                    class="com.euver.kiwi.action.AssembleSqlAction"
-                    text="Copy Expanded Statement"
-                    description="Copy the statement with all include tags expanded"
-                    icon="/icons/kiwi.svg"/>
             <action id="Kiwi.ExtractMethodInfo"
                     class="com.euver.kiwi.action.ExtractMethodInfoAction"
                     text="Extract Method Information"
                     description="提取方法的全限定名、功能注释和请求路径并输出到控制台"
+                    icon="/icons/kiwi.svg"/>
+            <action id="MyBatis.AssembleSql"
+                    class="com.euver.kiwi.action.AssembleSqlAction"
+                    text="Copy Expanded Statement"
+                    description="Copy the statement with all include tags expanded"
                     icon="/icons/kiwi.svg"/>
             <action id="Kiwi.FindTopCaller"
                     class="com.euver.kiwi.action.FindTopCallerAction"
