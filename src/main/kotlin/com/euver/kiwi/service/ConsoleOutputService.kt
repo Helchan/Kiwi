@@ -267,7 +267,8 @@ class ConsoleOutputService(private val project: Project) {
 
     /**
      * 构建顶层调用者输出内容（表格格式）
-     * 列顺序与 TreeTable 保持一致：序号、类型、请求路径、方法、类功能注释、方法功能注释、包路径
+     * 列顺序：Seq, Type, Request Path, Method FQN, Class Comment, Method Comment
+     * 注：Method 使用全限定名格式（包名.类名.方法名(参数列表)）
      */
     private fun buildTopCallersOutput(sourceMethodName: String, topCallers: List<MethodInfo>): String {
         val builder = StringBuilder()
@@ -283,17 +284,16 @@ class ConsoleOutputService(private val project: Project) {
             builder.appendLine("共找到 ${topCallers.size} 个顶层调用者:")
             builder.appendLine()
             
-            // 构建表格数据
-            val headers = listOf("Seq", "Type", "Request Path", "Method", "Class Comment", "Method Comment", "Package")
+            // 构建表格数据（方法使用全限定名格式）
+            val headers = listOf("Seq", "Type", "Request Path", "Method FQN", "Class Comment", "Method Comment")
             val rows = topCallers.mapIndexed { index, methodInfo ->
                 listOf(
                     (index + 1).toString(),
                     if (methodInfo.isExternalInterface()) "API" else "Normal",
                     methodInfo.requestPath.ifEmpty { "-" },
-                    "${methodInfo.simpleClassName}.${methodInfo.methodSignature}",
+                    "${methodInfo.packageName}.${methodInfo.simpleClassName}.${methodInfo.methodSignature}",
                     methodInfo.classComment.ifEmpty { "-" },
-                    methodInfo.functionComment.ifEmpty { "-" },
-                    methodInfo.packageName.ifEmpty { "-" }
+                    methodInfo.functionComment.ifEmpty { "-" }
                 )
             }
             
@@ -316,8 +316,8 @@ class ConsoleOutputService(private val project: Project) {
 
     /**
      * 构建带 Statement ID 的顶层调用者输出内容（SQL 片段模式）
-     * 列顺序与 TreeTable 保持一致：Seq、Type、Request Path、Method FQN、Class Comment、Method Comment、StatementID
-     * 注意：包路径已包含在 Method FQN 中，因此使用全限定方法名代替
+     * 列顺序：Seq, Type, Request Path, Method FQN, Class Comment, Method Comment, StatementID, Statement Comment
+     * 注：Method 使用全限定名格式，StatementID 显示完整格式（含 namespace）
      */
     private fun buildTopCallersOutputWithStatements(
         sourceMethodName: String,
@@ -338,26 +338,27 @@ class ConsoleOutputService(private val project: Project) {
             builder.appendLine("共找到 ${groupedByMethod.size} 个顶层调用者:")
             builder.appendLine()
             
-            // 构建表格数据（与 TreeTable 列保持一致）
-            val headers = listOf("Seq", "Type", "Request Path", "Method FQN", "Class Comment", "Method Comment", "StatementID")
+            // 构建表格数据（完整格式：方法全限定名，完整 StatementID，新增 Statement Comment）
+            val headers = listOf("Seq", "Type", "Request Path", "Method FQN", "Class Comment", "Method Comment", "StatementID", "Statement Comment")
             val rows = mutableListOf<List<String>>()
             var seqNumber = 0
             
             for ((_, group) in groupedByMethod) {
                 seqNumber++
                 val methodInfo = group.first().methodInfo
-                val statementIds = group.map { it.statementId }.distinct()
+                val statementIdsWithComments = group.map { it.statementId to it.statementComment }.distinct()
                 
                 // 每个 StatementID 输出一行
-                for (statementId in statementIds) {
+                for ((statementId, statementComment) in statementIdsWithComments) {
                     rows.add(listOf(
                         seqNumber.toString(),
                         if (methodInfo.isExternalInterface()) "API" else "Normal",
                         methodInfo.requestPath.ifEmpty { "-" },
-                        "${methodInfo.simpleClassName}.${methodInfo.methodSignature}",
+                        "${methodInfo.packageName}.${methodInfo.simpleClassName}.${methodInfo.methodSignature}",
                         methodInfo.classComment.ifEmpty { "-" },
                         methodInfo.functionComment.ifEmpty { "-" },
-                        statementId
+                        statementId,
+                        statementComment.ifEmpty { "-" }
                     ))
                 }
             }

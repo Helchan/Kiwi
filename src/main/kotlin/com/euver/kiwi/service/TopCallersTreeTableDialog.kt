@@ -79,6 +79,7 @@ class TopCallersTreeTableDialog private constructor(
     
     /**
      * 可排序的列枚举
+     * 表格列顺序：Seq(0), Type(1), Request Path(2), Method(3), Class Comment(4), Method Comment(5), StatementID(6), Statement Comment(7)
      */
     enum class SortColumn(val columnIndex: Int, val displayName: String) {
         NONE(-1, ""),
@@ -97,7 +98,8 @@ class TopCallersTreeTableDialog private constructor(
         data class TopCallerData(
             val seqNumber: Int,
             val methodInfo: MethodInfo,
-            val statementIds: List<String> = emptyList()
+            val statementIds: List<String> = emptyList(),
+            val statementComments: Map<String, String> = emptyMap()
         ) : TreeNodeData() {
             val type: String get() = if (methodInfo.isExternalInterface()) "API" else "Normal"
             val methodDisplay: String get() = "${methodInfo.simpleClassName}.${methodInfo.methodSignature}"
@@ -111,25 +113,34 @@ class TopCallersTreeTableDialog private constructor(
          */
         data class StatementData(
             val statementId: String,
-            val parentMethodInfo: MethodInfo
+            val parentMethodInfo: MethodInfo,
+            val statementComment: String = ""
         ) : TreeNodeData() {
+            /**
+             * 获取不含 namespace 的简短 Statement ID
+             */
+            fun getSimpleStatementId(): String {
+                val lastDot = statementId.lastIndexOf('.')
+                return if (lastDot > 0) statementId.substring(lastDot + 1) else statementId
+            }
+            
             // 子节点显示空字符串（序号列不显示内容）
             override fun toString(): String = ""
         }
     }
     
     /**
-     * 导出行数据
+     * 导出行数据（完整格式，用于控制台和 Excel 导出）
      */
     private data class ExportRowData(
         val seqNumber: Int,
         val type: String,
         val requestPath: String,
-        val methodDisplay: String,
+        val methodFqn: String,          // 方法全限定名：包名.类名.方法名(参数列表)
         val classComment: String,
         val functionComment: String,
-        val packageName: String,
-        val statementId: String? = null,
+        val statementId: String? = null, // 完整 StatementID（含 namespace）
+        val statementComment: String? = null, // Statement 对应方法注释
         val isFirstOfGroup: Boolean = true
     )
 
@@ -351,10 +362,12 @@ class TopCallersTreeTableDialog private constructor(
     
     /**
      * 根据列索引获取对应的排序列枚举
+     * 表格列顺序：Seq(0), Type(1), Request Path(2), Method(3), Class Comment(4), Method Comment(5), [StatementID(6), Statement Comment(7)]
+     * 只有 Type(1), Request Path(2), Method(3) 支持排序
      */
     private fun getSortColumnByIndex(columnIndex: Int): SortColumn {
-        // StatementID 列（SQL 片段模式下的最后一列）不支持排序
-        if (isSqlFragmentMode && columnIndex == treeTable.columnCount - 1) {
+        // StatementID 列（索引 6）和 Statement Comment 列（索引 7）不支持排序
+        if (isSqlFragmentMode && columnIndex >= 6) {
             return SortColumn.NONE
         }
         return SortColumn.values().find { it.columnIndex == columnIndex } ?: SortColumn.NONE
@@ -465,10 +478,9 @@ class TopCallersTreeTableDialog private constructor(
                 seqNumber = index + 1,
                 type = nodeData.type,
                 requestPath = methodInfo.requestPath,
-                methodDisplay = nodeData.methodDisplay,
+                methodFqn = "${methodInfo.packageName}.${methodInfo.simpleClassName}.${methodInfo.methodSignature}",
                 classComment = methodInfo.classComment,
-                functionComment = methodInfo.functionComment,
-                packageName = methodInfo.packageName
+                functionComment = methodInfo.functionComment
             ))
         }
     }
@@ -494,11 +506,13 @@ class TopCallersTreeTableDialog private constructor(
             seqNumber++
             val methodInfo = group.first().methodInfo
             val statementIds = group.map { it.statementId }.distinct()
+            val statementComments = group.associate { it.statementId to it.statementComment }
             
             val nodeData = TreeNodeData.TopCallerData(
                 seqNumber = seqNumber,
                 methodInfo = methodInfo,
-                statementIds = statementIds
+                statementIds = statementIds,
+                statementComments = statementComments
             )
             val parentNode = DefaultMutableTreeNode(nodeData)
             root.add(parentNode)
@@ -507,15 +521,16 @@ class TopCallersTreeTableDialog private constructor(
             val rowSpan = statementIds.size
             
             if (statementIds.size == 1) {
+                val statementId = statementIds.first()
                 exportDataList.add(ExportRowData(
                     seqNumber = seqNumber,
                     type = nodeData.type,
                     requestPath = methodInfo.requestPath,
-                    methodDisplay = nodeData.methodDisplay,
+                    methodFqn = "${methodInfo.packageName}.${methodInfo.simpleClassName}.${methodInfo.methodSignature}",
                     classComment = methodInfo.classComment,
                     functionComment = methodInfo.functionComment,
-                    packageName = methodInfo.packageName,
-                    statementId = statementIds.first(),
+                    statementId = statementId,
+                    statementComment = statementComments[statementId] ?: "",
                     isFirstOfGroup = true
                 ))
                 mergeInfo[exportRowIndex] = Pair(startRow, 1)
@@ -524,7 +539,8 @@ class TopCallersTreeTableDialog private constructor(
                 for ((i, statementId) in statementIds.withIndex()) {
                     val childData = TreeNodeData.StatementData(
                         statementId = statementId,
-                        parentMethodInfo = methodInfo
+                        parentMethodInfo = methodInfo,
+                        statementComment = statementComments[statementId] ?: ""
                     )
                     val childNode = DefaultMutableTreeNode(childData)
                     parentNode.add(childNode)
@@ -533,11 +549,11 @@ class TopCallersTreeTableDialog private constructor(
                         seqNumber = seqNumber,
                         type = nodeData.type,
                         requestPath = methodInfo.requestPath,
-                        methodDisplay = nodeData.methodDisplay,
+                        methodFqn = "${methodInfo.packageName}.${methodInfo.simpleClassName}.${methodInfo.methodSignature}",
                         classComment = methodInfo.classComment,
                         functionComment = methodInfo.functionComment,
-                        packageName = methodInfo.packageName,
                         statementId = statementId,
+                        statementComment = statementComments[statementId] ?: "",
                         isFirstOfGroup = (i == 0)
                     ))
                     mergeInfo[exportRowIndex] = Pair(startRow, rowSpan)
@@ -584,6 +600,8 @@ class TopCallersTreeTableDialog private constructor(
     /**
      * 创建列定义
      * 注意：第一列必须使用 TreeColumnInfo 类型才能显示展开/折叠控件
+     * 表格列顺序：Seq, Type, Request Path, Method, Class Comment, Method Comment, [StatementID, Statement Comment]
+     * 注：Package 列已移除，保持界面简洁
      */
     private fun createColumns(): Array<ColumnInfo<*, *>> {
         val columns = mutableListOf<ColumnInfo<*, *>>()
@@ -637,21 +655,35 @@ class TopCallersTreeTableDialog private constructor(
             }
         })
         
-        columns.add(object : ColumnInfo<Any?, String>("Package") {
-            override fun valueOf(item: Any?): String {
-                return when (val data = (item as? DefaultMutableTreeNode)?.userObject) {
-                    is TreeNodeData.TopCallerData -> data.methodInfo.packageName
-                    else -> ""
-                }
-            }
-        })
-        
+        // SQL 片段模式下增加 StatementID 和 Statement Comment 列
         if (isSqlFragmentMode) {
+            // StatementID 列：仅显示 ID 部分（去除 namespace）
             columns.add(object : ColumnInfo<Any?, String>("StatementID") {
                 override fun valueOf(item: Any?): String {
                     return when (val data = (item as? DefaultMutableTreeNode)?.userObject) {
-                        is TreeNodeData.StatementData -> data.statementId
-                        is TreeNodeData.TopCallerData -> if (data.statementIds.size == 1) data.statementIds.first() else ""
+                        is TreeNodeData.StatementData -> data.getSimpleStatementId()
+                        is TreeNodeData.TopCallerData -> {
+                            if (data.statementIds.size == 1) {
+                                val fullId = data.statementIds.first()
+                                val lastDot = fullId.lastIndexOf('.')
+                                if (lastDot > 0) fullId.substring(lastDot + 1) else fullId
+                            } else ""
+                        }
+                        else -> ""
+                    }
+                }
+            })
+            
+            // Statement Comment 列：显示 Statement 对应的 Mapper 方法注释
+            columns.add(object : ColumnInfo<Any?, String>("Statement Comment") {
+                override fun valueOf(item: Any?): String {
+                    return when (val data = (item as? DefaultMutableTreeNode)?.userObject) {
+                        is TreeNodeData.StatementData -> data.statementComment
+                        is TreeNodeData.TopCallerData -> {
+                            if (data.statementIds.size == 1) {
+                                data.statementComments[data.statementIds.first()] ?: ""
+                            } else ""
+                        }
                         else -> ""
                     }
                 }
@@ -676,15 +708,14 @@ class TopCallersTreeTableDialog private constructor(
             val node = DefaultMutableTreeNode(nodeData)
             root.add(node)
             
-            // 添加导出数据
+            // 添加导出数据（方法全限定名格式）
             exportDataList.add(ExportRowData(
                 seqNumber = index + 1,
                 type = nodeData.type,
                 requestPath = methodInfo.requestPath,
-                methodDisplay = nodeData.methodDisplay,
+                methodFqn = "${methodInfo.packageName}.${methodInfo.simpleClassName}.${methodInfo.methodSignature}",
                 classComment = methodInfo.classComment,
-                functionComment = methodInfo.functionComment,
-                packageName = methodInfo.packageName
+                functionComment = methodInfo.functionComment
             ))
         }
     }
@@ -708,11 +739,14 @@ class TopCallersTreeTableDialog private constructor(
             seqNumber++
             val methodInfo = group.first().methodInfo
             val statementIds = group.map { it.statementId }.distinct()
+            // 构建 statementId -> statementComment 的映射
+            val statementComments = group.associate { it.statementId to it.statementComment }
             
             val nodeData = TreeNodeData.TopCallerData(
                 seqNumber = seqNumber,
                 methodInfo = methodInfo,
-                statementIds = statementIds
+                statementIds = statementIds,
+                statementComments = statementComments
             )
             val parentNode = DefaultMutableTreeNode(nodeData)
             root.add(parentNode)
@@ -723,15 +757,16 @@ class TopCallersTreeTableDialog private constructor(
             
             // 如果只有一个 Statement，不需要子节点
             if (statementIds.size == 1) {
+                val statementId = statementIds.first()
                 exportDataList.add(ExportRowData(
                     seqNumber = seqNumber,
                     type = nodeData.type,
                     requestPath = methodInfo.requestPath,
-                    methodDisplay = nodeData.methodDisplay,
+                    methodFqn = "${methodInfo.packageName}.${methodInfo.simpleClassName}.${methodInfo.methodSignature}",
                     classComment = methodInfo.classComment,
                     functionComment = methodInfo.functionComment,
-                    packageName = methodInfo.packageName,
-                    statementId = statementIds.first(),
+                    statementId = statementId,
+                    statementComment = statementComments[statementId] ?: "",
                     isFirstOfGroup = true
                 ))
                 mergeInfo[exportRowIndex] = Pair(startRow, 1)
@@ -741,7 +776,8 @@ class TopCallersTreeTableDialog private constructor(
                 for ((i, statementId) in statementIds.withIndex()) {
                     val childData = TreeNodeData.StatementData(
                         statementId = statementId,
-                        parentMethodInfo = methodInfo
+                        parentMethodInfo = methodInfo,
+                        statementComment = statementComments[statementId] ?: ""
                     )
                     val childNode = DefaultMutableTreeNode(childData)
                     parentNode.add(childNode)
@@ -751,11 +787,11 @@ class TopCallersTreeTableDialog private constructor(
                         seqNumber = seqNumber,
                         type = nodeData.type,
                         requestPath = methodInfo.requestPath,
-                        methodDisplay = nodeData.methodDisplay,
+                        methodFqn = "${methodInfo.packageName}.${methodInfo.simpleClassName}.${methodInfo.methodSignature}",
                         classComment = methodInfo.classComment,
                         functionComment = methodInfo.functionComment,
-                        packageName = methodInfo.packageName,
                         statementId = statementId,
+                        statementComment = statementComments[statementId] ?: "",
                         isFirstOfGroup = (i == 0)
                     ))
                     mergeInfo[exportRowIndex] = Pair(startRow, rowSpan)
@@ -842,6 +878,7 @@ class TopCallersTreeTableDialog private constructor(
     
     /**
      * 计算每列内容的最大宽度（用于按比例分配列宽）
+     * 表格列顺序：Seq(0), Type(1), Request Path(2), Method(3), Class Comment(4), Method Comment(5), [StatementID(6), Statement Comment(7)]
      * @return 每列的最大内容宽度（像素）列表
      */
     private fun calculateColumnContentWidths(): List<Int> {
@@ -866,16 +903,22 @@ class TopCallersTreeTableDialog private constructor(
             }
             
             // 遍历导出数据计算内容宽度
+            // 表格列顺序：Seq(0), Type(1), Request Path(2), Method(3), Class Comment(4), Method Comment(5), [StatementID(6), Statement Comment(7)]
             for (rowData in exportDataList) {
                 val value = when (colIndex) {
                     0 -> rowData.seqNumber.toString()
                     1 -> rowData.type
                     2 -> rowData.requestPath
-                    3 -> rowData.methodDisplay
+                    3 -> "${rowData.methodFqn.substringAfterLast('.', "").substringBefore('(')}" // 表格显示简短方法名
                     4 -> rowData.classComment
                     5 -> rowData.functionComment
-                    6 -> rowData.packageName
-                    7 -> rowData.statementId ?: ""
+                    6 -> {
+                        // StatementID 列（表格显示简短 ID）
+                        val fullId = rowData.statementId ?: ""
+                        val lastDot = fullId.lastIndexOf('.')
+                        if (lastDot > 0) fullId.substring(lastDot + 1) else fullId
+                    }
+                    7 -> rowData.statementComment ?: ""
                     else -> ""
                 }
                 val cellWidth = fontMetrics.stringWidth(value) + padding
@@ -986,8 +1029,8 @@ class TopCallersTreeTableDialog private constructor(
                     val node = treePath?.lastPathComponent as? DefaultMutableTreeNode
                     val nodeData = node?.userObject
                     
-                    // 判断是否是 StatementID 列（SQL 片段模式下的最后一列）
-                    val isStatementIdColumn = isSqlFragmentMode && col == treeTable.columnCount - 1
+                    // 判断是否是 StatementID 列（SQL 片段模式下的倒数第二列，索引为6）
+                    val isStatementIdColumn = isSqlFragmentMode && col == 6
                     // 判断是否是 Method 列（索引 3）
                     val isMethodColumn = col == 3
                     
@@ -1277,7 +1320,7 @@ class TopCallersTreeTableDialog private constructor(
 
     override fun createNorthPanel(): JComponent? {
         val panel = JPanel(BorderLayout())
-        panel.add(JLabel("源位置：$sourceMethodName"), BorderLayout.WEST)
+        panel.add(JLabel("Source: $sourceMethodName"), BorderLayout.WEST)
         return panel
     }
 
@@ -1439,6 +1482,7 @@ class TopCallersTreeTableDialog private constructor(
     
     /**
      * 导出表格内容到 Excel 文件（保持合并单元格效果）
+     * Excel 导出使用完整格式：方法全限定名，完整 StatementID
      */
     private fun exportToExcel() {
         try {
@@ -1465,11 +1509,11 @@ class TopCallersTreeTableDialog private constructor(
                     setFont(font)
                 }
                 
-                // 创建表头行
+                // 创建表头行（完整格式：方法全限定名，完整 StatementID，新增 Statement Comment）
                 val columnNames = if (isSqlFragmentMode) {
-                    arrayOf("Seq", "Type", "Request Path", "Method", "Class Comment", "Method Comment", "Package", "StatementID")
+                    arrayOf("Seq", "Type", "Request Path", "Method FQN", "Class Comment", "Method Comment", "StatementID", "Statement Comment")
                 } else {
-                    arrayOf("Seq", "Type", "Request Path", "Method", "Class Comment", "Method Comment", "Package")
+                    arrayOf("Seq", "Type", "Request Path", "Method FQN", "Class Comment", "Method Comment")
                 }
                 val headerRow = sheet.createRow(0)
                 columnNames.forEachIndexed { index, name ->
@@ -1485,13 +1529,13 @@ class TopCallersTreeTableDialog private constructor(
                     row.createCell(0).setCellValue(if (rowData.isFirstOfGroup) rowData.seqNumber.toString() else "")
                     row.createCell(1).setCellValue(if (rowData.isFirstOfGroup) rowData.type else "")
                     row.createCell(2).setCellValue(if (rowData.isFirstOfGroup) rowData.requestPath else "")
-                    row.createCell(3).setCellValue(if (rowData.isFirstOfGroup) rowData.methodDisplay else "")
+                    row.createCell(3).setCellValue(if (rowData.isFirstOfGroup) rowData.methodFqn else "") // 方法全限定名
                     row.createCell(4).setCellValue(if (rowData.isFirstOfGroup) rowData.classComment else "")
                     row.createCell(5).setCellValue(if (rowData.isFirstOfGroup) rowData.functionComment else "")
-                    row.createCell(6).setCellValue(if (rowData.isFirstOfGroup) rowData.packageName else "")
                     
                     if (isSqlFragmentMode) {
-                        row.createCell(7).setCellValue(rowData.statementId ?: "")
+                        row.createCell(6).setCellValue(rowData.statementId ?: "") // 完整 StatementID
+                        row.createCell(7).setCellValue(rowData.statementComment ?: "") // Statement Comment
                     }
                 }
                 
@@ -1537,8 +1581,22 @@ class TopCallersTreeTableDialog private constructor(
     
     private fun generateFileName(): String {
         val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
-        val baseName = sanitizeFileName(sourceMethodName)
+        // 从 sourceMethodName 提取触发的 ID 或方法名
+        val baseName = extractTriggerName(sourceMethodName)
         return "${baseName}_${timestamp}.xlsx"
+    }
+    
+    /**
+     * 提取触发的 ID 或方法名
+     * 支持格式：
+     * - SQL Fragment: com.example.UserMapper.baseColumns -> baseColumns
+     * - com.example.UserService.getUserById -> getUserById
+     */
+    private fun extractTriggerName(sourceName: String): String {
+        val cleanName = sourceName.removePrefix("SQL Fragment: ")
+        // 取最后一个点号后的部分作为文件名
+        val triggerName = cleanName.substringAfterLast('.', cleanName)
+        return sanitizeFileName(triggerName)
     }
     
     private fun sanitizeFileName(name: String): String {
@@ -1558,6 +1616,8 @@ class TopCallersTreeTableDialog private constructor(
 
     /**
      * 在 Excel 中应用单元格合并区域
+     * 列结构：Seq(0), Type(1), Request Path(2), Method FQN(3), Class Comment(4), Method Comment(5), StatementID(6), Statement Comment(7)
+     * 合并前 6 列（索引 0-5），StatementID 和 Statement Comment 列不合并
      */
     private fun applyExcelMergeRegions(sheet: org.apache.poi.ss.usermodel.Sheet) {
         val processedStartRows = mutableSetOf<Int>()
@@ -1570,8 +1630,8 @@ class TopCallersTreeTableDialog private constructor(
             }
             processedStartRows.add(startRow)
             
-            // 对除 StatementID 列（最后一列，索引7）外的所有列进行合并
-            for (colIndex in 0 until 7) {
+            // 对除 StatementID 列（索引 6）和 Statement Comment 列（索引 7）外的所有列进行合并
+            for (colIndex in 0 until 6) {
                 val mergeRegion = CellRangeAddress(
                     startRow + 1,
                     startRow + rowSpan,

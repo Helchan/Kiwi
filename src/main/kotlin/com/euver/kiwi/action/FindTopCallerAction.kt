@@ -271,6 +271,15 @@ class FindTopCallerAction : AnAction() {
                 var processedCount = 0
                 
                 for ((statementId, mapperMethod) in statementToMethod) {
+                    // 获取 Statement 对应的 Mapper 方法的功能注释
+                    val statementComment = ApplicationManager.getApplication().runReadAction<String> {
+                        try {
+                            methodInfoExtractorService.extractMethodInfo(mapperMethod).functionComment
+                        } catch (e: Exception) {
+                            ""
+                        }
+                    }
+                    
                     val topCallers = topCallerService.findTopCallers(mapperMethod)
                     if (topCallers.isEmpty()) {
                         // 如果没有顶层调用者，Mapper 方法本身就是顶层调用者
@@ -283,7 +292,7 @@ class FindTopCallerAction : AnAction() {
                             }
                         }
                         if (methodInfo != null) {
-                            topCallersWithStatements.add(TopCallerWithStatement(methodInfo, statementId))
+                            topCallersWithStatements.add(TopCallerWithStatement(methodInfo, statementId, statementComment))
                         }
                     } else {
                         for (topCaller in topCallers) {
@@ -296,7 +305,7 @@ class FindTopCallerAction : AnAction() {
                                 }
                             }
                             if (methodInfo != null) {
-                                topCallersWithStatements.add(TopCallerWithStatement(methodInfo, statementId))
+                                topCallersWithStatements.add(TopCallerWithStatement(methodInfo, statementId, statementComment))
                             }
                         }
                     }
