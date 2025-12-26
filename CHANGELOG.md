@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.5
+- 优化注释提取逻辑：注释中某行包含 @ 则整行不取
+
+## 0.1.4
+- 修复类功能注释和方法功能注释可能包含 @ 标签内容的问题：
+  - 重构 getFunctionCommentFromDoc() 方法，只提取纯描述部分
+  - 新增 removeAtTagContent() 方法，过滤文本中间的 @ 标签内容
+  - 移除非技术性标签的处理逻辑，完全排除所有 @ 标签
+  - 清理不再使用的 PsiDocTag import
+
 ## 0.1.3
 - Get Top Callers Information 功能进一步增强匿名类/未知类处理：
   - 扩展匿名类检测范围：不仅检查 PsiAnonymousClass，还检查 qualifiedName 为 null 的情况

@@ -7,7 +7,6 @@ import com.intellij.psi.PsiAnnotation
 import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiMethod
 import com.intellij.psi.javadoc.PsiDocComment
-import com.intellij.psi.javadoc.PsiDocTag
 import com.intellij.psi.util.PsiTreeUtil
 
 /**
@@ -332,43 +331,42 @@ class MethodInfoExtractorService {
 
     /**
      * 从 PsiDocComment 中提取功能性描述
-     * 排除 @param、@return、@throws 等技术性标签
+     * 只提取描述部分，完全排除所有 @ 标签内容
      */
     private fun getFunctionCommentFromDoc(docComment: PsiDocComment?): String {
         if (docComment == null) {
             return ""
         }
-
-        val technicalTags = setOf("param", "return", "throws", "exception", "see", "since", "version", "author", "deprecated")
         
         val descriptionBuilder = StringBuilder()
         
         for (element in docComment.descriptionElements) {
             val text = element.text.trim()
-            if (text.isNotEmpty() && text != "*") {
-                descriptionBuilder.append(text).append(" ")
-            }
-        }
-
-        // 检查是否有非技术性的自定义标签（如功能说明标签）
-        for (tag in docComment.tags) {
-            if (tag.name.lowercase() !in technicalTags) {
-                val tagText = getTagText(tag)
-                if (tagText.isNotEmpty()) {
-                    descriptionBuilder.append(tagText).append(" ")
+            // 跳过空文本、星号、以及 @ 开头的内容
+            if (text.isNotEmpty() && text != "*" && !text.startsWith("@")) {
+                // 额外检查：如果文本中间包含 @ 标签，只取 @ 之前的部分
+                val cleanedText = removeAtTagContent(text)
+                if (cleanedText.isNotEmpty()) {
+                    descriptionBuilder.append(cleanedText).append(" ")
                 }
             }
         }
 
+        // 不再处理任何 @ 标签，只返回纯描述部分
         return descriptionBuilder.toString().trim()
     }
 
     /**
-     * 获取标签的文本内容
+     * 检查文本是否包含 @ 标签
+     * 如果包含则返回空字符串（整行不取），否则返回原文本
      */
-    private fun getTagText(tag: PsiDocTag): String {
-        val textElements = tag.dataElements
-        return textElements.joinToString(" ") { it.text.trim() }.trim()
+    private fun removeAtTagContent(text: String): String {
+        // 如果文本中包含 @，整行不取
+        return if (text.contains('@')) {
+            ""
+        } else {
+            text
+        }
     }
 
     /**
