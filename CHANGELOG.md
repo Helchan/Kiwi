@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.7]
+### Added
+- 添加 plugin.xml 中的 description 标签，满足 JetBrains 插件市场上传要求：
+  - 描述以拉丁字符开头，超过 40 个字符
+  - 包含插件三大核心功能介绍
+  - 包含技术亮点说明（DDD 架构、BFS 算法、Lambda 追溯等）
+
 ## [0.1.6]
 ### Changed
 - 将 Excel 导出库从 Apache POI 替换为 FastExcel，插件体积从 16MB 降至约 400KB

@@ -4,6 +4,27 @@
     <name>Kiwin</name>
     <vendor>Helchan</vendor>
 
+    <description><![CDATA[
+    Kiwin is a powerful IntelliJ IDEA plugin designed for Spring and MyBatis project development.
+    It provides essential tools for analyzing and enhancing development efficiency.
+
+    <h3>Key Features:</h3>
+    <ul>
+        <li><b>Copy Expanded Statement</b> - Assemble MyBatis SQL statements with automatic include tag expansion, supporting nested references up to 10 levels and cross-file fragment resolution.</li>
+        <li><b>Extract Method Information</b> - Extract Java method details including HTTP request type, request path, fully qualified name, and functional comments for Spring MVC and JAX-RS annotations.</li>
+        <li><b>Get Top Callers Information</b> - Analyze call chains to find all top-level callers (API entry points) for Java methods, MyBatis Statements, or SQL fragments with TreeTable visualization and Excel export.</li>
+    </ul>
+
+    <h3>Highlights:</h3>
+    <ul>
+        <li>DDD (Domain-Driven Design) architecture for clean code organization</li>
+        <li>BFS algorithm for efficient call chain traversal with 50-level depth limit</li>
+        <li>Lambda and method reference call tracing support</li>
+        <li>Automatic circular reference detection</li>
+        <li>Background async execution without blocking IDE</li>
+    </ul>
+    ]]></description>
+
     <depends>com.intellij.modules.platform</depends>
     <depends>com.intellij.modules.xml</depends>
     <depends>com.intellij.modules.java</depends>
