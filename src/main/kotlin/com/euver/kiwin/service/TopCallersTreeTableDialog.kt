@@ -3,6 +3,9 @@ package com.euver.kiwin.service
 import com.euver.kiwin.application.ExpandStatementUseCase
 import com.euver.kiwin.domain.model.MethodInfo
 import com.euver.kiwin.domain.model.TopCallerWithStatement
+import com.euver.kiwin.domain.service.ExcelExportData
+import com.euver.kiwin.domain.service.MergeRegion
+import com.euver.kiwin.infrastructure.excel.FastExcelExporter
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.ide.CopyPasteManager
@@ -17,10 +20,6 @@ import com.intellij.ui.treeStructure.treetable.ListTreeTableModelOnColumns
 import com.intellij.ui.treeStructure.treetable.TreeColumnInfo
 import com.intellij.ui.treeStructure.treetable.TreeTableModel
 import com.intellij.util.ui.ColumnInfo
-import org.apache.poi.ss.usermodel.FillPatternType
-import org.apache.poi.ss.usermodel.IndexedColors
-import org.apache.poi.ss.util.CellRangeAddress
-import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import java.awt.BorderLayout
 import java.awt.Desktop
 import java.awt.datatransfer.StringSelection
@@ -31,7 +30,6 @@ import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.io.File
-import java.io.FileOutputStream
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.atomic.AtomicReference
@@ -1496,69 +1494,42 @@ class TopCallersTreeTableDialog private constructor(
             val fileName = generateFileName()
             val file = File(outDir, fileName)
             
-            XSSFWorkbook().use { workbook ->
-                val sheet = workbook.createSheet("Top Callers")
-                
-                // 创建表头样式
-                val headerStyle = workbook.createCellStyle().apply {
-                    fillForegroundColor = IndexedColors.PALE_BLUE.index
-                    fillPattern = FillPatternType.SOLID_FOREGROUND
-                    val font = workbook.createFont().apply {
-                        bold = true
-                    }
-                    setFont(font)
-                }
-                
-                // 创建表头行（完整格式：方法全限定名，完整 StatementID，新增 Statement Comment）
-                val columnNames = if (isSqlFragmentMode) {
-                    arrayOf("Seq", "Type", "Request Path", "Method FQN", "Class Comment", "Method Comment", "StatementID", "Statement Comment")
-                } else {
-                    arrayOf("Seq", "Type", "Request Path", "Method FQN", "Class Comment", "Method Comment")
-                }
-                val headerRow = sheet.createRow(0)
-                columnNames.forEachIndexed { index, name ->
-                    val cell = headerRow.createCell(index)
-                    cell.setCellValue(name)
-                    cell.cellStyle = headerStyle
-                }
-                
-                // 填充数据行
-                exportDataList.forEachIndexed { rowIndex, rowData ->
-                    val row = sheet.createRow(rowIndex + 1)
-                    
-                    row.createCell(0).setCellValue(if (rowData.isFirstOfGroup) rowData.seqNumber.toString() else "")
-                    row.createCell(1).setCellValue(if (rowData.isFirstOfGroup) rowData.type else "")
-                    row.createCell(2).setCellValue(if (rowData.isFirstOfGroup) rowData.requestPath else "")
-                    row.createCell(3).setCellValue(if (rowData.isFirstOfGroup) rowData.methodFqn else "") // 方法全限定名
-                    row.createCell(4).setCellValue(if (rowData.isFirstOfGroup) rowData.classComment else "")
-                    row.createCell(5).setCellValue(if (rowData.isFirstOfGroup) rowData.functionComment else "")
-                    
-                    if (isSqlFragmentMode) {
-                        row.createCell(6).setCellValue(rowData.statementId ?: "") // 完整 StatementID
-                        row.createCell(7).setCellValue(rowData.statementComment ?: "") // Statement Comment
-                    }
-                }
-                
-                // 设置列宽度（自适应内容+30像素，最大300像素）
-                // POI 列宽单位：1/256 字符宽度，1字符约7像素
-                val extraPadding = 30 * 256 / 7  // 30像素转换为POI单位
-                val maxPixelWidth = 300
-                val maxColumnWidth = maxPixelWidth * 256 / 7
-                for (colIndex in columnNames.indices) {
-                    sheet.autoSizeColumn(colIndex)
-                    val newWidth = minOf(sheet.getColumnWidth(colIndex) + extraPadding, maxColumnWidth)
-                    sheet.setColumnWidth(colIndex, newWidth)
-                }
-                
-                // SQL 片段模式下应用单元格合并
+            val columnNames = if (isSqlFragmentMode) {
+                listOf("Seq", "Type", "Request Path", "Method FQN", "Class Comment", "Method Comment", "StatementID", "Statement Comment")
+            } else {
+                listOf("Seq", "Type", "Request Path", "Method FQN", "Class Comment", "Method Comment")
+            }
+            
+            val rows = exportDataList.map { rowData ->
+                val baseRow = listOf<Any?>(
+                    if (rowData.isFirstOfGroup) rowData.seqNumber else null,  // Seq 保持数值类型
+                    if (rowData.isFirstOfGroup) rowData.type else "",
+                    if (rowData.isFirstOfGroup) rowData.requestPath else "",
+                    if (rowData.isFirstOfGroup) rowData.methodFqn else "",
+                    if (rowData.isFirstOfGroup) rowData.classComment else "",
+                    if (rowData.isFirstOfGroup) rowData.functionComment else ""
+                )
                 if (isSqlFragmentMode) {
-                    applyExcelMergeRegions(sheet)
-                }
-                
-                FileOutputStream(file).use { fos ->
-                    workbook.write(fos)
+                    baseRow + listOf(rowData.statementId ?: "", rowData.statementComment ?: "")
+                } else {
+                    baseRow
                 }
             }
+            
+            val mergeRegions = if (isSqlFragmentMode) {
+                buildMergeRegions()
+            } else {
+                emptyList()
+            }
+            
+            val exportData = ExcelExportData(
+                sheetName = "Top Callers",
+                headers = columnNames,
+                rows = rows,
+                mergeRegions = mergeRegions
+            )
+            
+            FastExcelExporter().export(file, exportData)
             
             logger.info("导出成功：${file.absolutePath}")
             ConsoleOutputService(project).output("导出成功：${file.absolutePath}")
@@ -1571,6 +1542,33 @@ class TopCallersTreeTableDialog private constructor(
             ConsoleOutputService(project).output("导出失败：${e.message}")
             NotificationService(project).showErrorNotification("导出失败：${e.message}")
         }
+    }
+    
+    /**
+     * 构建合并区域列表
+     */
+    private fun buildMergeRegions(): List<MergeRegion> {
+        val regions = mutableListOf<MergeRegion>()
+        val processedStartRows = mutableSetOf<Int>()
+        
+        for ((_, mergeData) in mergeInfo) {
+            val (startRow, rowSpan) = mergeData
+            
+            if (startRow in processedStartRows || rowSpan <= 1) {
+                continue
+            }
+            processedStartRows.add(startRow)
+            
+            for (colIndex in 0 until 6) {
+                regions.add(MergeRegion(
+                    firstRow = startRow,
+                    lastRow = startRow + rowSpan - 1,
+                    firstCol = colIndex,
+                    lastCol = colIndex
+                ))
+            }
+        }
+        return regions
     }
     
     private fun createOutputDirectory(): File? {
@@ -1611,35 +1609,6 @@ class TopCallersTreeTableDialog private constructor(
             }
         } catch (e: Exception) {
             logger.warn("无法打开目录：${e.message}")
-        }
-    }
-
-    /**
-     * 在 Excel 中应用单元格合并区域
-     * 列结构：Seq(0), Type(1), Request Path(2), Method FQN(3), Class Comment(4), Method Comment(5), StatementID(6), Statement Comment(7)
-     * 合并前 6 列（索引 0-5），StatementID 和 Statement Comment 列不合并
-     */
-    private fun applyExcelMergeRegions(sheet: org.apache.poi.ss.usermodel.Sheet) {
-        val processedStartRows = mutableSetOf<Int>()
-        
-        for ((row, mergeData) in mergeInfo) {
-            val (startRow, rowSpan) = mergeData
-            
-            if (startRow in processedStartRows || rowSpan <= 1) {
-                continue
-            }
-            processedStartRows.add(startRow)
-            
-            // 对除 StatementID 列（索引 6）和 Statement Comment 列（索引 7）外的所有列进行合并
-            for (colIndex in 0 until 6) {
-                val mergeRegion = CellRangeAddress(
-                    startRow + 1,
-                    startRow + rowSpan,
-                    colIndex,
-                    colIndex
-                )
-                sheet.addMergedRegion(mergeRegion)
-            }
         }
     }
 }

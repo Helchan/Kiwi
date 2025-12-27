@@ -3,6 +3,9 @@ package com.euver.kiwin.service
 import com.euver.kiwin.application.ExpandStatementUseCase
 import com.euver.kiwin.domain.model.MethodInfo
 import com.euver.kiwin.domain.model.TopCallerWithStatement
+import com.euver.kiwin.domain.service.ExcelExportData
+import com.euver.kiwin.domain.service.MergeRegion
+import com.euver.kiwin.infrastructure.excel.FastExcelExporter
 import com.euver.kiwin.parser.MyBatisXmlParser
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.thisLogger
@@ -15,10 +18,6 @@ import com.intellij.psi.PsiMethod
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.table.JBTable
-import org.apache.poi.ss.usermodel.FillPatternType
-import org.apache.poi.ss.usermodel.IndexedColors
-import org.apache.poi.ss.util.CellRangeAddress
-import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import java.awt.BorderLayout
 import java.awt.Component
 import java.awt.Desktop
@@ -30,7 +29,6 @@ import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.io.File
-import java.io.FileOutputStream
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.atomic.AtomicReference
@@ -599,80 +597,78 @@ class TopCallersTableDialog private constructor(
                 ConsoleOutputService(project).output("导出失败：无法创建 .Kiwin/out 目录")
                 return
             }
-            
+                
             val fileName = generateFileName()
             val file = File(outDir, fileName)
-            
-            XSSFWorkbook().use { workbook ->
-                val sheet = workbook.createSheet("顶层调用者")
                 
-                // 创建表头样式（浅蓝色背景）
-                val headerStyle = workbook.createCellStyle().apply {
-                    fillForegroundColor = IndexedColors.PALE_BLUE.index
-                    fillPattern = FillPatternType.SOLID_FOREGROUND
-                    val font = workbook.createFont().apply {
-                        bold = true
-                    }
-                    setFont(font)
-                }
-                
-                // 创建表头行
-                val columnNames = if (isSqlFragmentMode) {
-                    baseColumnNames + arrayOf("StatementID")
-                } else {
-                    baseColumnNames
-                }
-                val headerRow = sheet.createRow(0)
-                columnNames.forEachIndexed { index, name ->
-                    val cell = headerRow.createCell(index)
-                    cell.setCellValue(name)
-                    cell.cellStyle = headerStyle
-                }
-                
-                // 填充数据行
-                for (rowIndex in 0 until tableModel.rowCount) {
-                    val row = sheet.createRow(rowIndex + 1)
-                    for (colIndex in 0 until tableModel.columnCount) {
-                        val cell = row.createCell(colIndex)
-                        val value = tableModel.getValueAt(rowIndex, colIndex)?.toString() ?: ""
-                        cell.setCellValue(value)
-                    }
-                }
-                
-                // 设置列宽度（自适应内容+30像素，最大300像素）
-                // POI 列宽单位：1/256 字符宽度，1字符约7像素
-                val extraPadding = 30 * 256 / 7  // 30像素转换为POI单位
-                val maxPixelWidth = 300
-                val maxColumnWidth = maxPixelWidth * 256 / 7
-                for (colIndex in 0 until tableModel.columnCount) {
-                    sheet.autoSizeColumn(colIndex)
-                    val newWidth = minOf(sheet.getColumnWidth(colIndex) + extraPadding, maxColumnWidth)
-                    sheet.setColumnWidth(colIndex, newWidth)
-                }
-                
-                // SQL 片段模式下儈单元格合并
-                if (isSqlFragmentMode) {
-                    applyExcelMergeRegions(sheet)
-                }
-                
-                // 写入文件
-                FileOutputStream(file).use { fos ->
-                    workbook.write(fos)
-                }
+            val columnNames = if (isSqlFragmentMode) {
+                baseColumnNames.toList() + "StatementID"
+            } else {
+                baseColumnNames.toList()
             }
-            
+                
+            val rows = (0 until tableModel.rowCount).map { rowIndex ->
+                listOf<Any?>(
+                    tableModel.getValueAt(rowIndex, 0) as? Int,  // Seq 保持数值类型
+                    *(1 until tableModel.columnCount).map { colIndex ->
+                        tableModel.getValueAt(rowIndex, colIndex)?.toString() ?: ""
+                    }.toTypedArray()
+                )
+            }
+                
+            val mergeRegions = if (isSqlFragmentMode) {
+                buildMergeRegions()
+            } else {
+                emptyList()
+            }
+                
+            val exportData = ExcelExportData(
+                sheetName = "顶层调用者",
+                headers = columnNames,
+                rows = rows,
+                mergeRegions = mergeRegions
+            )
+                
+            FastExcelExporter().export(file, exportData)
+                
             logger.info("导出成功：${file.absolutePath}")
             ConsoleOutputService(project).output("导出成功：${file.absolutePath}")
             NotificationService(project).showInfoNotification("导出成功")
-            
-            // 打开文件所在目录
+                
             openDirectory(outDir)
-            
+                
         } catch (e: Exception) {
             logger.error("导出 Excel 失败", e)
             ConsoleOutputService(project).output("导出失败：${e.message}")
             NotificationService(project).showErrorNotification("导出失败：${e.message}")
         }
+    }
+        
+    /**
+     * 构建合并区域列表
+     */
+    private fun buildMergeRegions(): List<MergeRegion> {
+        val regions = mutableListOf<MergeRegion>()
+        val processedStartRows = mutableSetOf<Int>()
+            
+        for ((_, mergeData) in mergeInfo) {
+            val (startRow, rowSpan) = mergeData
+                
+            if (startRow in processedStartRows || rowSpan <= 1) {
+                continue
+            }
+            processedStartRows.add(startRow)
+                
+            for (colIndex in 0 until statementIdColumnIndex) {
+                regions.add(MergeRegion(
+                    firstRow = startRow,
+                    lastRow = startRow + rowSpan - 1,
+                    firstCol = colIndex,
+                    lastCol = colIndex
+                ))
+            }
+        }
+        return regions
     }
     
     /**
@@ -714,36 +710,6 @@ class TopCallersTableDialog private constructor(
             }
         } catch (e: Exception) {
             logger.warn("无法打开目录：${e.message}")
-        }
-    }
-
-    /**
-     * 在 Excel 中应用单元格合并区域
-     */
-    private fun applyExcelMergeRegions(sheet: org.apache.poi.ss.usermodel.Sheet) {
-        // 找出所有需要合并的区域
-        val processedStartRows = mutableSetOf<Int>()
-        
-        for ((row, mergeData) in mergeInfo) {
-            val (startRow, rowSpan) = mergeData
-            
-            // 跳过已处理的区域或不需要合并的单行
-            if (startRow in processedStartRows || rowSpan <= 1) {
-                continue
-            }
-            processedStartRows.add(startRow)
-            
-            // 对除 StatementID 列（最后一列）外的所有列进行合并
-            // Excel 行索引需要 +1（表头占用第0行）
-            for (colIndex in 0 until statementIdColumnIndex) {
-                val mergeRegion = CellRangeAddress(
-                    startRow + 1,  // 起始行（+1 因为表头）
-                    startRow + rowSpan,  // 结束行
-                    colIndex,  // 起始列
-                    colIndex   // 结束列
-                )
-                sheet.addMergedRegion(mergeRegion)
-            }
         }
     }
     
